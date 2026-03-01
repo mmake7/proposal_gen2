@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PPROPOSAL - 제안서 생성 시스템">
+  <title>PPROPOSAL</title>
+
+  <!-- Pretendard + Inter 웹폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+
+  <!-- ProposalPro 디자인 시스템 스타일시트 -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/krds-base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+</head>
+<body>
+
+  <!-- 접근성: 본문 바로가기 -->
+  <a href="#main-content" class="skip-nav">본문 바로가기</a>
+
+  <div class="page-wrapper">
+
+    <!-- ============================================================
+         Header
+         ============================================================ -->
+    <header class="site-header" role="banner">
+      <div class="container">
+        <a href="/" class="header-brand" aria-label="PPROPOSAL 홈">
+          <svg class="header-brand-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 4h16v16H4V4z" rx="4" fill="url(#brand-grad)"/>
+            <path d="M8 8h4a4 4 0 0 1 0 8H8V8z" fill="#fff" opacity="0.9"/>
+            <defs><linearGradient id="brand-grad" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#6366F1"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+          </svg>
+          <span class="header-brand-text">PPROPOSAL</span>
+        </a>
+
+        <button class="header-menu-toggle" aria-expanded="false" aria-controls="header-nav" aria-label="메뉴 열기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+
+        <nav id="header-nav" class="header-nav" role="navigation" aria-label="주요 메뉴">
+          <a href="#" class="header-nav-link active" aria-current="page">대시보드</a>
+          <a href="#" class="header-nav-link">제안서 작성</a>
+          <a href="#" class="header-nav-link">템플릿 관리</a>
+          <a href="#" class="header-nav-link">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <main id="main-content" class="page-main" role="main">
+
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-bg" aria-hidden="true">
+          <div class="hero-glow hero-glow--1"></div>
+          <div class="hero-glow hero-glow--2"></div>
+        </div>
+        <div class="container">
+          <div class="hero-content">
+            <div class="hero-badge">
+              <span class="hero-badge-dot" aria-hidden="true"></span>
+              AI-Powered Proposal Engine
+            </div>
+            <h1 class="hero-title">
+              제안서 작성,<br>
+              <span class="hero-title-accent">AI가 함께합니다</span>
+            </h1>
+            <p class="hero-desc">
+              RFP를 업로드하면 AI가 핵심 요구사항을 분석하고,
+              최적화된 제안서 초안을 자동으로 생성합니다.
+            </p>
+            <div class="hero-actions">
+              <a href="#upload-title" class="btn btn-primary btn-lg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                RFP 분석 시작
+              </a>
+              <a href="#features-title" class="btn btn-ghost btn-lg">자세히 알아보기</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           RFP PDF Upload Section
+           ============================================================ -->
+      <section class="section" aria-labelledby="upload-title">
+        <div class="container container-narrow">
+          <div class="section-header">
+            <h2 id="upload-title" class="section-title">RFP 분석</h2>
+            <p class="section-subtitle">RFP(제안요청서) PDF를 업로드하면 AI가 핵심 요구사항을 자동으로 분석합니다.</p>
+          </div>
+
+          <div class="card upload-card">
+            <div
+              class="upload-dropzone"
+              id="upload-dropzone"
+              role="button"
+              tabindex="0"
+              aria-label="RFP PDF 파일 업로드 영역"
+            >
+              <!-- 드래그 오버레이: 파일을 끌고 들어왔을 때 표시 -->
+              <div class="upload-drag-overlay" id="upload-drag-overlay" aria-hidden="true">
+                <div class="upload-drag-overlay-icon">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M28 6v32"/>
+                    <polyline points="16 26 28 38 40 26"/>
+                    <line x1="10" y1="48" x2="46" y2="48"/>
+                  </svg>
+                </div>
+                <p class="upload-drag-overlay-text">여기에 파일을 놓으세요</p>
+              </div>
+
+              <!-- 기본 상태: 아이콘 + 안내 문구 -->
+              <div class="upload-prompt" id="upload-prompt">
+                <div class="upload-icon" aria-hidden="true">
+                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M28 4H12a4 4 0 0 0-4 4v32a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4V16z"/>
+                    <polyline points="28 4 28 16 40 16"/>
+                    <line x1="32" y1="26" x2="16" y2="26"/>
+                    <line x1="32" y1="34" x2="16" y2="34"/>
+                    <polyline points="20 20 18 20 16 20"/>
+                  </svg>
+                </div>
+                <p class="upload-text">RFP PDF 파일을 여기에 끌어다 놓거나 클릭하여 선택하세요</p>
+                <p class="upload-hint" id="upload-hint">PDF 파일만 업로드 가능 (최대 50MB)</p>
+              </div>
+
+              <!-- 파일 선택 후: 미리보기 -->
+              <div class="upload-preview" id="upload-preview" hidden>
+                <div class="upload-preview-icon" aria-hidden="true">
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 3H9a3 3 0 0 0-3 3v20a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V10z"/>
+                    <polyline points="19 3 19 10 26 10"/>
+                  </svg>
+                </div>
+                <div class="upload-preview-info">
+                  <p class="upload-preview-name" id="upload-file-name"></p>
+                  <p class="upload-preview-size" id="upload-file-size"></p>
+                </div>
+                <div class="upload-preview-actions">
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    id="upload-reselect-btn"
+                    aria-label="다른 파일 선택"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="1 4 1 10 7 10"/>
+                      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                    </svg>
+                    재선택
+                  </button>
+                  <button
+                    type="button"
+                    class="upload-preview-remove"
+                    id="upload-remove-btn"
+                    aria-label="선택한 파일 제거"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <line x1="5" y1="5" x2="15" y2="15"/>
+                      <line x1="15" y1="5" x2="5" y2="15"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <label for="upload-input" class="sr-only">RFP PDF 파일 선택</label>
+              <input
+                type="file"
+                id="upload-input"
+                accept=".pdf,application/pdf"
+                class="sr-only"
+                aria-describedby="upload-hint"
+              />
+            </div>
+
+            <!-- 인라인 에러/경고 메시지 영역 -->
+            <div class="upload-message" id="upload-message" hidden role="alert" aria-live="polite">
+              <div class="upload-message-icon" aria-hidden="true" id="upload-message-icon"></div>
+              <div class="upload-message-content">
+                <p class="upload-message-title" id="upload-message-title"></p>
+                <p class="upload-message-desc" id="upload-message-desc"></p>
+              </div>
+              <button type="button" class="upload-message-close" id="upload-message-close" aria-label="메시지 닫기">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <line x1="4" y1="4" x2="12" y2="12"/>
+                  <line x1="12" y1="4" x2="4" y2="12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="upload-actions">
+              <button type="button" class="btn btn-primary btn-lg" id="upload-analyze-btn" disabled aria-disabled="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                분석 시작
+              </button>
+            </div>
+          </div>
+
+          <!-- ============================================================
+               RFP Analysis Progress
+               ============================================================ -->
+          <div class="card analysis-card" id="analysis-progress" hidden aria-labelledby="analysis-progress-title">
+            <div class="analysis-header">
+              <div class="analysis-header-info">
+                <h3 id="analysis-progress-title" class="analysis-title">RFP 분석 진행 중</h3>
+                <p class="analysis-file-info" id="analysis-file-name" aria-live="polite"></p>
+              </div>
+              <span class="analysis-percent" id="analysis-percent" aria-live="polite">0%</span>
+            </div>
+
+            <div class="analysis-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="RFP 분석 진행률" id="analysis-bar">
+              <div class="analysis-bar-fill" id="analysis-bar-fill"></div>
+            </div>
+
+            <ol class="analysis-steps" id="analysis-steps" aria-label="분석 단계">
+              <li class="analysis-step is-pending" data-step="0">
+                <div class="analysis-step-indicator" aria-hidden="true">
+                  <span class="analysis-step-number">1</span>
+                  <svg class="analysis-step-check" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8 6.5 11 12.5 5"/></svg>
+                  <svg class="analysis-step-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </div>
+                <div class="analysis-step-content">
+                  <p class="analysis-step-label">사업개요 분석</p>
+                  <p class="analysis-step-desc">사업 목적, 범위, 예산 등 기본 정보를 추출합니다</p>
+                </div>
+              </li>
+              <li class="analysis-step is-pending" data-step="1">
+                <div class="analysis-step-indicator" aria-hidden="true">
+                  <span class="analysis-step-number">2</span>
+                  <svg class="analysis-step-check" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8 6.5 11 12.5 5"/></svg>
+                  <svg class="analysis-step-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </div>
+                <div class="analysis-step-content">
+                  <p class="analysis-step-label">요구사항 추출</p>
+                  <p class="analysis-step-desc">기능·비기능 요구사항을 분류하고 추출합니다</p>
+                </div>
+              </li>
+              <li class="analysis-step is-pending" data-step="2">
+                <div class="analysis-step-indicator" aria-hidden="true">
+                  <span class="analysis-step-number">3</span>
+                  <svg class="analysis-step-check" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8 6.5 11 12.5 5"/></svg>
+                  <svg class="analysis-step-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </div>
+                <div class="analysis-step-content">
+                  <p class="analysis-step-label">배점기준 분석</p>
+                  <p class="analysis-step-desc">평가 항목별 배점과 기준을 분석합니다</p>
+                </div>
+              </li>
+              <li class="analysis-step is-pending" data-step="3">
+                <div class="analysis-step-indicator" aria-hidden="true">
+                  <span class="analysis-step-number">4</span>
+                  <svg class="analysis-step-check" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8 6.5 11 12.5 5"/></svg>
+                  <svg class="analysis-step-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </div>
+                <div class="analysis-step-content">
+                  <p class="analysis-step-label">제안목차 추출</p>
+                  <p class="analysis-step-desc">RFP 기반 최적 제안서 목차를 구성합니다</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- ============================================================
+               RFP Analysis Result
+               ============================================================ -->
+          <div class="card analysis-card" id="analysis-result" hidden aria-labelledby="analysis-result-title">
+            <div class="analysis-result-header">
+              <div class="analysis-result-icon" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </div>
+              <div class="analysis-result-header-text">
+                <h3 id="analysis-result-title" class="analysis-result-title">분석 완료</h3>
+                <p class="analysis-result-desc">RFP 문서의 핵심 정보가 성공적으로 추출되었습니다</p>
+              </div>
+            </div>
+
+            <div class="analysis-result-summary" id="analysis-result-summary">
+              <div class="analysis-result-item">
+                <p class="analysis-result-item-label">사업명</p>
+                <p class="analysis-result-item-value" id="result-project-name">—</p>
+              </div>
+              <div class="analysis-result-item">
+                <p class="analysis-result-item-label">발주기관</p>
+                <p class="analysis-result-item-value" id="result-org-name">—</p>
+              </div>
+              <div class="analysis-result-item">
+                <p class="analysis-result-item-label">추출된 요구사항</p>
+                <p class="analysis-result-item-value" id="result-req-count">—</p>
+              </div>
+              <div class="analysis-result-item">
+                <p class="analysis-result-item-label">제안목차 항목</p>
+                <p class="analysis-result-item-value" id="result-toc-count">—</p>
+              </div>
+            </div>
+
+            <div class="analysis-result-actions">
+              <button type="button" class="btn btn-secondary btn-lg" id="analysis-retry-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                다시 분석
+              </button>
+              <button type="button" class="btn btn-excel btn-lg" id="excel-download-btn">
+                <svg class="btn-icon-default" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <polyline points="9 15 12 18 15 15"/>
+                </svg>
+                <svg class="btn-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <span class="btn-label">Excel 다운로드</span>
+              </button>
+              <button type="button" class="btn btn-primary btn-lg" id="analysis-proceed-btn">
+                제안서 작성 시작
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                  <polyline points="12 5 19 12 12 19"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- ============================================================
+               RFP Analysis Error State
+               ============================================================ -->
+          <div class="card analysis-card" id="analysis-error" hidden role="alert" aria-live="assertive" aria-labelledby="error-state-title">
+            <div class="state-error is-api" id="analysis-error-inner">
+              <div class="state-error-icon" id="error-state-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <h3 class="state-error-title" id="error-state-title">분석 중 오류가 발생했습니다</h3>
+              <p class="state-error-desc" id="error-state-desc">서버에서 요청을 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.</p>
+              <div class="state-error-code" id="error-state-code" hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+                <span id="error-state-code-text"></span>
+              </div>
+              <div class="state-error-actions">
+                <button type="button" class="btn btn-primary btn-lg" id="error-retry-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                  </svg>
+                  다시 시도
+                </button>
+                <button type="button" class="btn btn-secondary btn-lg" id="error-reupload-btn">
+                  다른 파일 업로드
+                </button>
+              </div>
+              <div class="retry-countdown" id="error-retry-countdown" hidden aria-live="assertive">
+                <div class="retry-countdown-spinner" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </div>
+                <span id="error-retry-countdown-text">자동 재시도까지 5초...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================
+               Parsing Warnings Area (shown above tabs when partial failures)
+               ============================================================ -->
+          <div id="parsing-warnings-area" hidden></div>
+
+          <!-- ============================================================
+               RFP Parsing Result Tabs
+               ============================================================ -->
+          <div class="card analysis-card" id="analysis-tabs" hidden aria-labelledby="analysis-tabs-title">
+            <h3 id="analysis-tabs-title" class="sr-only">RFP 파싱 결과 상세</h3>
+
+            <!-- Tab Navigation -->
+            <div class="tabs" role="tablist" aria-label="파싱 결과 탭">
+              <button
+                class="tab is-active"
+                id="tab-overview"
+                role="tab"
+                aria-selected="true"
+                aria-controls="tabpanel-overview"
+                tabindex="0"
+              >
+                <span class="tab-label">사업개요</span>
+                <span class="tab-badge" id="tab-badge-overview" aria-label="항목 수">0</span>
+              </button>
+              <button
+                class="tab"
+                id="tab-requirements"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tabpanel-requirements"
+                tabindex="-1"
+              >
+                <span class="tab-label">요구사항</span>
+                <span class="tab-badge" id="tab-badge-requirements" aria-label="항목 수">0</span>
+              </button>
+              <button
+                class="tab"
+                id="tab-scoring"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tabpanel-scoring"
+                tabindex="-1"
+              >
+                <span class="tab-label">배점기준</span>
+                <span class="tab-badge" id="tab-badge-scoring" aria-label="항목 수">0</span>
+              </button>
+              <button
+                class="tab"
+                id="tab-toc"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tabpanel-toc"
+                tabindex="-1"
+              >
+                <span class="tab-label">제안목차</span>
+                <span class="tab-badge" id="tab-badge-toc" aria-label="항목 수">0</span>
+              </button>
+            </div>
+
+            <!-- Tab Panels -->
+            <div
+              class="tabpanel is-active"
+              id="tabpanel-overview"
+              role="tabpanel"
+              aria-labelledby="tab-overview"
+              tabindex="0"
+            >
+              <div class="tabpanel-empty" id="tabpanel-overview-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <p class="tabpanel-empty-text">사업 목적, 범위, 예산 등 기본 정보가 표시됩니다</p>
+              </div>
+              <div class="tabpanel-content" id="tabpanel-overview-content"></div>
+            </div>
+
+            <div
+              class="tabpanel"
+              id="tabpanel-requirements"
+              role="tabpanel"
+              aria-labelledby="tab-requirements"
+              tabindex="0"
+              hidden
+            >
+              <div class="tabpanel-empty" id="tabpanel-requirements-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+                <p class="tabpanel-empty-text">기능·비기능 요구사항 목록이 표시됩니다</p>
+              </div>
+              <div class="tabpanel-content" id="tabpanel-requirements-content"></div>
+            </div>
+
+            <div
+              class="tabpanel"
+              id="tabpanel-scoring"
+              role="tabpanel"
+              aria-labelledby="tab-scoring"
+              tabindex="0"
+              hidden
+            >
+              <div class="tabpanel-empty" id="tabpanel-scoring-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+                <p class="tabpanel-empty-text">평가 항목별 배점과 기준이 표시됩니다</p>
+              </div>
+              <div class="tabpanel-content" id="tabpanel-scoring-content"></div>
+            </div>
+
+            <div
+              class="tabpanel"
+              id="tabpanel-toc"
+              role="tabpanel"
+              aria-labelledby="tab-toc"
+              tabindex="0"
+              hidden
+            >
+              <div class="tabpanel-empty" id="tabpanel-toc-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="8" y1="6" x2="21" y2="6"/>
+                  <line x1="8" y1="12" x2="21" y2="12"/>
+                  <line x1="8" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="3.01" y2="6"/>
+                  <line x1="3" y1="12" x2="3.01" y2="12"/>
+                  <line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                <p class="tabpanel-empty-text">RFP 기반 최적 제안서 목차가 표시됩니다</p>
+              </div>
+              <div class="tabpanel-content" id="tabpanel-toc-content"></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="section" aria-labelledby="features-title">
+        <div class="container">
+          <div class="section-header">
+            <h2 id="features-title" class="section-title">주요 기능</h2>
+            <p class="section-subtitle">제안서 작성부터 제출까지, 모든 과정을 지원합니다.</p>
+          </div>
+
+          <div class="grid grid-3">
+            <article class="card">
+              <div class="card-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+              </div>
+              <h3 class="card-title">AI 제안서 생성</h3>
+              <p class="card-desc">
+                입찰 공고를 분석하여 맞춤형 제안서 초안을 자동으로 생성합니다.
+                핵심 요구사항을 추출하고 최적의 구조를 제안합니다.
+              </p>
+            </article>
+
+            <article class="card">
+              <div class="card-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="3" y1="9" x2="21" y2="9"/>
+                  <line x1="9" y1="21" x2="9" y2="9"/>
+                </svg>
+              </div>
+              <h3 class="card-title">템플릿 시스템</h3>
+              <p class="card-desc">
+                다양한 공공사업 유형별 템플릿을 제공합니다.
+                기존 제안서를 기반으로 커스텀 템플릿을 만들 수 있습니다.
+              </p>
+            </article>
+
+            <article class="card">
+              <div class="card-icon" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </div>
+              <h3 class="card-title">품질 분석</h3>
+              <p class="card-desc">
+                작성된 제안서의 완성도를 자동 분석하고 개선점을 제시합니다.
+                평가 기준 충족 여부를 사전에 점검합니다.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           Template Management Section
+           ============================================================ -->
+      <section class="section section-alt" id="template-section" aria-labelledby="template-title">
+        <div class="container container-narrow">
+          <div class="section-header">
+            <h2 id="template-title" class="section-title">템플릿 관리</h2>
+            <p class="section-subtitle">파워포인트 템플릿을 업로드하면 슬라이드 구조를 자동으로 분석합니다.</p>
+          </div>
+
+          <!-- Template Upload Card -->
+          <div class="card upload-card tpl-upload-card">
+            <div
+              class="upload-dropzone"
+              id="tpl-dropzone"
+              role="button"
+              tabindex="0"
+              aria-label="PPTX 템플릿 파일 업로드 영역"
+            >
+              <!-- 기본 상태 -->
+              <div class="upload-prompt" id="tpl-upload-prompt">
+                <div class="upload-icon" aria-hidden="true">
+                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="6" width="40" height="28" rx="4"/>
+                    <line x1="16" y1="42" x2="32" y2="42"/>
+                    <line x1="24" y1="34" x2="24" y2="42"/>
+                    <rect x="12" y="12" width="10" height="8" rx="1" opacity="0.5"/>
+                    <line x1="26" y1="14" x2="36" y2="14" opacity="0.4"/>
+                    <line x1="26" y1="18" x2="34" y2="18" opacity="0.4"/>
+                  </svg>
+                </div>
+                <p class="upload-text">PPTX 템플릿 파일을 여기에 끌어다 놓거나 클릭하여 선택하세요</p>
+                <p class="upload-hint">PowerPoint 파일만 업로드 가능 (.pptx, 최대 50MB)</p>
+              </div>
+
+              <!-- 파일 선택 후 -->
+              <div class="upload-preview" id="tpl-upload-preview" hidden>
+                <div class="upload-preview-icon" aria-hidden="true">
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="5" width="24" height="18" rx="2"/>
+                    <line x1="10" y1="27" x2="22" y2="27"/>
+                    <line x1="16" y1="23" x2="16" y2="27"/>
+                  </svg>
+                </div>
+                <div class="upload-preview-info">
+                  <p class="upload-preview-name" id="tpl-file-name"></p>
+                  <p class="upload-preview-size" id="tpl-file-size"></p>
+                </div>
+                <button
+                  type="button"
+                  class="upload-preview-remove"
+                  id="tpl-remove-btn"
+                  aria-label="선택한 파일 제거"
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="5" y1="5" x2="15" y2="15"/>
+                    <line x1="15" y1="5" x2="5" y2="15"/>
+                  </svg>
+                </button>
+              </div>
+
+              <label for="tpl-file-input" class="sr-only">PPTX 템플릿 파일 선택</label>
+              <input
+                type="file"
+                id="tpl-file-input"
+                accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                class="sr-only"
+              />
+            </div>
+
+            <!-- 업로드 진행률 -->
+            <div class="tpl-progress" id="tpl-upload-progress" hidden>
+              <div class="tpl-progress-bar">
+                <div class="tpl-progress-fill"></div>
+              </div>
+            </div>
+
+            <div class="upload-actions">
+              <button type="button" class="btn btn-primary btn-lg" id="tpl-upload-btn" disabled aria-disabled="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span class="btn-label">업로드 및 분석</span>
+                <svg class="btn-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Template List -->
+          <div class="tpl-list-section">
+            <h3 class="tpl-list-title">저장된 템플릿</h3>
+
+            <div id="tpl-list-empty" class="tpl-list-empty">
+              <div class="tpl-list-empty-icon" aria-hidden="true">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <p class="tpl-list-empty-text">업로드된 템플릿이 없습니다</p>
+              <p class="tpl-list-empty-hint">PPTX 파일을 업로드하여 시작하세요</p>
+            </div>
+
+            <div id="tpl-list" class="tpl-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Template Detail Modal -->
+      <div class="tpl-modal-backdrop" id="tpl-detail-modal" hidden role="dialog" aria-modal="true" aria-labelledby="tpl-modal-title">
+        <div class="tpl-modal">
+          <div class="tpl-modal-header">
+            <h3 id="tpl-modal-title">슬라이드 구조</h3>
+            <button type="button" class="tpl-modal-close" id="tpl-detail-close" aria-label="닫기">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="5" y1="5" x2="15" y2="15"/>
+                <line x1="15" y1="5" x2="5" y2="15"/>
+              </svg>
+            </button>
+          </div>
+          <div class="tpl-modal-body" id="tpl-detail-content"></div>
+        </div>
+      </div>
+
+      <!-- ============================================================
+           Settings Section — Font Configuration
+           ============================================================ -->
+      <section class="section" id="settings-section" aria-labelledby="settings-title">
+        <div class="container container-narrow">
+          <div class="section-header">
+            <h2 id="settings-title" class="section-title">설정</h2>
+            <p class="section-subtitle">제안서 생성 시 사용할 폰트 설정을 관리합니다.</p>
+          </div>
+
+          <div class="settings-section-inner">
+
+            <!-- Font Mode Selector -->
+            <div class="card font-mode-selector">
+              <h4>폰트 적용 방식</h4>
+              <div class="font-mode-options">
+                <label class="font-mode-option is-active">
+                  <input type="radio" name="font-mode" value="template_keep" checked>
+                  <div>
+                    <p class="font-mode-label">템플릿 유지</p>
+                    <p class="font-mode-desc">업로드된 템플릿의 폰트를 그대로 사용합니다</p>
+                  </div>
+                </label>
+                <label class="font-mode-option">
+                  <input type="radio" name="font-mode" value="preset_apply">
+                  <div>
+                    <p class="font-mode-label">프리셋 적용</p>
+                    <p class="font-mode-desc">폰트가 지정되지 않은 곳에만 프리셋을 적용합니다</p>
+                  </div>
+                </label>
+                <label class="font-mode-option">
+                  <input type="radio" name="font-mode" value="preset_force">
+                  <div>
+                    <p class="font-mode-label">프리셋 강제</p>
+                    <p class="font-mode-desc">모든 텍스트에 프리셋 폰트를 강제 적용합니다</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Font Presets -->
+            <div>
+              <div class="font-presets-header">
+                <h4>폰트 프리셋</h4>
+                <button type="button" class="btn btn-secondary btn-sm" id="font-add-preset-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  프리셋 추가
+                </button>
+              </div>
+
+              <div id="font-presets-grid" class="font-presets-grid">
+                <!-- JS로 렌더링 -->
+              </div>
+
+              <!-- Inline preset form (hidden by default) -->
+              <div id="font-preset-form" class="font-preset-form" hidden>
+                <p class="font-preset-form-title" id="font-preset-form-title">새 프리셋 만들기</p>
+
+                <div class="font-preset-form-group">
+                  <label class="font-preset-form-label" for="font-form-name">프리셋 이름</label>
+                  <input type="text" class="font-preset-form-input" id="font-form-name" placeholder="예: 사내 표준" maxlength="50">
+                </div>
+
+                <div class="font-preset-form-group">
+                  <label class="font-preset-form-label">제목 폰트</label>
+                  <div class="font-preset-form-row">
+                    <input type="text" class="font-preset-form-input" id="font-form-title-name" placeholder="폰트 이름">
+                    <input type="number" class="font-preset-form-input" id="font-form-title-size" value="28" min="1" max="200" step="0.5">
+                    <label class="font-preset-form-bold"><input type="checkbox" id="font-form-title-bold" checked> B</label>
+                    <input type="color" class="font-preset-form-input" id="font-form-title-color" value="#1E293B">
+                  </div>
+                </div>
+
+                <div class="font-preset-form-group">
+                  <label class="font-preset-form-label">본문 폰트</label>
+                  <div class="font-preset-form-row">
+                    <input type="text" class="font-preset-form-input" id="font-form-body-name" placeholder="폰트 이름">
+                    <input type="number" class="font-preset-form-input" id="font-form-body-size" value="11" min="1" max="200" step="0.5">
+                    <label class="font-preset-form-bold"><input type="checkbox" id="font-form-body-bold"> B</label>
+                    <input type="color" class="font-preset-form-input" id="font-form-body-color" value="#334155">
+                  </div>
+                </div>
+
+                <div class="font-preset-form-group">
+                  <label class="font-preset-form-label">강조 폰트</label>
+                  <div class="font-preset-form-row">
+                    <input type="text" class="font-preset-form-input" id="font-form-emphasis-name" placeholder="폰트 이름">
+                    <input type="number" class="font-preset-form-input" id="font-form-emphasis-size" value="13" min="1" max="200" step="0.5">
+                    <label class="font-preset-form-bold"><input type="checkbox" id="font-form-emphasis-bold" checked> B</label>
+                    <input type="color" class="font-preset-form-input" id="font-form-emphasis-color" value="#4F46E5">
+                  </div>
+                </div>
+
+                <div class="font-preset-form-actions">
+                  <button type="button" class="btn btn-ghost" id="font-form-cancel">취소</button>
+                  <button type="button" class="btn btn-primary" id="font-form-submit">저장</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           Proposal Wizard Section (hidden until "제안서 작성 시작" click)
+           ============================================================ -->
+      <section class="section" id="proposal-section" aria-labelledby="proposal-title" hidden>
+        <div class="container">
+          <div class="section-header">
+            <h2 id="proposal-title" class="section-title">제안서 작성</h2>
+            <p class="section-subtitle">템플릿 선택부터 PPTX 생성까지, 4단계로 제안서를 완성합니다.</p>
+          </div>
+
+          <!-- Step Indicator -->
+          <div class="proposal-step-indicator">
+            <div class="proposal-step-dot is-active" data-step="0">
+              <span class="proposal-step-num">1</span>
+              <span class="proposal-step-label">템플릿 선택</span>
+            </div>
+            <div class="proposal-step-line"></div>
+            <div class="proposal-step-dot" data-step="1">
+              <span class="proposal-step-num">2</span>
+              <span class="proposal-step-label">매핑 확인</span>
+            </div>
+            <div class="proposal-step-line"></div>
+            <div class="proposal-step-dot" data-step="2">
+              <span class="proposal-step-num">3</span>
+              <span class="proposal-step-label">콘텐츠 생성</span>
+            </div>
+            <div class="proposal-step-line"></div>
+            <div class="proposal-step-dot" data-step="3">
+              <span class="proposal-step-num">4</span>
+              <span class="proposal-step-label">다운로드</span>
+            </div>
+          </div>
+
+          <!-- Step 0: Template Selection -->
+          <div class="proposal-step-panel" data-step="0">
+            <h3 class="proposal-step-title">사용할 PPTX 템플릿을 선택하세요</h3>
+            <div class="proposal-template-grid" id="proposal-template-grid"></div>
+          </div>
+
+          <!-- Step 1: Mapping Confirmation -->
+          <div class="proposal-step-panel" data-step="1" hidden>
+            <h3 class="proposal-step-title">목차 ↔ 템플릿 챕터 매핑</h3>
+            <p class="proposal-step-desc">AI가 목차와 템플릿 챕터를 자동으로 매핑했습니다. 확인 후 다음 단계로 진행하세요.</p>
+            <div id="proposal-mapping-panel"></div>
+          </div>
+
+          <!-- Step 2: Content Generation -->
+          <div class="proposal-step-panel" data-step="2" hidden>
+            <h3 class="proposal-step-title">AI 콘텐츠 생성</h3>
+            <div id="proposal-generate-panel">
+              <p style="color:var(--krds-text-tertiary);">"콘텐츠 생성 시작" 버튼을 클릭하면 AI가 각 섹션의 제안서 내용을 작성합니다.</p>
+            </div>
+          </div>
+
+          <!-- Step 3: Download -->
+          <div class="proposal-step-panel" data-step="3" hidden>
+            <h3 class="proposal-step-title">제안서 다운로드</h3>
+            <div class="proposal-download-card">
+              <div class="proposal-download-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <polyline points="9 15 12 18 15 15"/>
+                </svg>
+              </div>
+              <p class="proposal-download-text">콘텐츠 생성이 완료되었습니다. 아래 버튼을 클릭하여 제안서 PPTX 파일을 다운로드하세요.</p>
+              <button type="button" class="btn btn-primary btn-lg" id="proposal-export-btn">
+                <svg class="btn-icon-default" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <polyline points="9 15 12 18 15 15"/>
+                </svg>
+                <svg class="btn-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <span class="btn-label">PPTX 다운로드</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Navigation Buttons -->
+          <div class="proposal-nav-buttons">
+            <button type="button" class="btn btn-secondary btn-lg" id="proposal-prev-btn" hidden>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+              이전
+            </button>
+            <button type="button" class="btn btn-primary btn-lg" id="proposal-next-btn">
+              다음
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      <section class="section section-alt" aria-labelledby="stats-title">
+        <div class="container">
+          <div class="section-header">
+            <h2 id="stats-title" class="section-title">시스템 현황</h2>
+            <p class="section-subtitle">실시간 프로젝트 진행 상태를 확인합니다.</p>
+          </div>
+
+          <dl class="grid grid-4" role="list">
+            <div class="card stat-card">
+              <dd class="stat-value">128</dd>
+              <dt class="stat-label">생성된 제안서</dt>
+            </div>
+            <div class="card stat-card">
+              <dd class="stat-value">24</dd>
+              <dt class="stat-label">진행중 프로젝트</dt>
+            </div>
+            <div class="card stat-card">
+              <dd class="stat-value">15</dd>
+              <dt class="stat-label">등록 템플릿</dt>
+            </div>
+            <div class="card stat-card stat-card--success">
+              <dd class="stat-value">92%</dd>
+              <dt class="stat-label">품질 통과율</dt>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ============================================================
+         Footer
+         ============================================================ -->
+    <footer class="site-footer" role="contentinfo">
+      <div class="container">
+        <div class="footer-compact">
+          <p class="footer-copyright">&copy; 2026 PPROPOSAL. AI 기반 공공기관 제안서 자동 생성 시스템.</p>
+          <nav class="footer-nav" aria-label="푸터 내비게이션">
+            <ul class="footer-nav-list">
+              <li><a href="#">이용 가이드</a></li>
+              <li><a href="#">자주 묻는 질문</a></li>
+              <li><a href="#">문의하기</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite" aria-relevant="additions" aria-atomic="false"></div>
+
+  <!-- Flask API Client -->
+  <script src="{{ url_for('static', filename='js/client.js') }}"></script>
+
+  <!-- Error/Empty/Warning State UI -->
+  <script src="{{ url_for('static', filename='js/states.js') }}"></script>
+
+  <!-- TOC Editor (must load before upload.js) -->
+  <script src="{{ url_for('static', filename='js/toc-editor.js') }}"></script>
+
+  <!-- Upload Logic -->
+  <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+
+  <!-- Tab Navigation Logic -->
+  <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
+
+  <!-- Excel Download Logic -->
+  <script src="{{ url_for('static', filename='js/download.js') }}"></script>
+
+  <!-- Template Manager Logic -->
+  <script src="{{ url_for('static', filename='js/template.js') }}"></script>
+
+  <!-- Settings / Font Preset Manager -->
+  <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+
+  <!-- Proposal Wizard -->
+  <script src="{{ url_for('static', filename='js/proposal.js') }}"></script>
+
+  <!-- Mobile Menu Toggle -->
+  <script>
+    (function () {
+      var toggle = document.querySelector('.header-menu-toggle');
+      var nav = document.getElementById('header-nav');
+      if (!toggle || !nav) return;
+
+      toggle.addEventListener('click', function () {
+        var isOpen = nav.classList.toggle('is-open');
+        toggle.setAttribute('aria-expanded', String(isOpen));
+        toggle.setAttribute('aria-label', isOpen ? '메뉴 닫기' : '메뉴 열기');
+
+        if (isOpen) {
+          /* 메뉴 열리면 첫 번째 링크로 포커스 이동 */
+          var firstLink = nav.querySelector('.header-nav-link');
+          if (firstLink) firstLink.focus();
+        }
+      });
+
+      /* Escape 키로 모바일 메뉴 닫기 */
+      nav.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && nav.classList.contains('is-open')) {
+          nav.classList.remove('is-open');
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.setAttribute('aria-label', '메뉴 열기');
+          toggle.focus();
+        }
+      });
+    })();
+  </script>
+
+</body>
+</html>

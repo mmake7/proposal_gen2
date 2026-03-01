@@ -1,0 +1,91 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ===========================
+# Environment & Secrets
+# ===========================
+.env
+.env.local
+.env.production
+
+# ===========================
+# Testing / Coverage
+# ===========================
+.pytest_cache/
+pytest-cache-files-*/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ===========================
+# IDE & Editor
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ===========================
+# OS Generated
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ===========================
+# Upload / Temp Files
+# ===========================
+uploads/
+tmp/
+temp/
+*.tmp
+templates_storage/
+
+# ===========================
+# Logs
+# ===========================
+*.log
+logs/
+
+# ===========================
+# Output Files (generated)
+# ===========================
+output/
+exports/
+
+# ===========================
+# Claude Code
+# ===========================
+.claude/
+
+# ===========================
+# Test artifacts
+# ===========================
+test_rfp*.pdf
+test_template*.pptx
+test_output*.pptx

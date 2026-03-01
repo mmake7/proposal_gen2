@@ -1,0 +1,11 @@
+Flask==3.1.0
+flask-cors==5.0.1
+python-dotenv==1.1.0
+gunicorn==23.0.0
+PyMuPDF==1.25.3
+anthropic>=0.40.0
+openpyxl>=3.1.0
+python-pptx>=1.0.0
+Pillow>=10.0.0
+# OCR 지원 (선택적 - 스캔 기반 PDF 처리)
+# pytesseract==0.3.13
