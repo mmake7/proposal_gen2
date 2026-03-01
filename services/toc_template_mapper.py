@@ -67,7 +67,11 @@ def map_toc_to_template(
     """
     global _current_mapping, _template_id
 
-    chapters = template_detail.get('chapters', [])
+    # analysis 키 안에 chapters가 있을 수 있음
+    analysis = template_detail.get('analysis', {})
+    chapters = analysis.get('chapters', []) if analysis else []
+    if not chapters:
+        chapters = template_detail.get('chapters', [])
     _template_id = template_detail.get('id')
 
     mapping = []
@@ -120,7 +124,7 @@ def _get_chapter_slides(chapter: dict) -> list[int]:
     """챕터에 속한 슬라이드 번호 리스트를 반환합니다."""
     slides = chapter.get('slides', [])
     if isinstance(slides, list):
-        return [s.get('slide_number', 0) if isinstance(s, dict) else s for s in slides]
+        return [s.get('index', s.get('slide_number', 0)) if isinstance(s, dict) else s for s in slides]
     return []
 
 
