@@ -6,6 +6,7 @@ AI 기반 공공기관 제안서 자동 생성 시스템
 import io
 import logging
 import os
+import tempfile
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file
@@ -24,9 +25,10 @@ from services.font_manager import (
 )
 from services.toc_manager import (
     list_toc_templates, get_toc_template, create_toc_template,
-    delete_toc_template, get_current_toc, set_current_toc,
-    apply_toc_template, finalize_toc, TocManagerError,
+    update_toc_template, delete_toc_template, get_current_toc,
+    set_current_toc, apply_toc_template, finalize_toc, TocManagerError,
 )
+from services.rfp_requirement_parser import parse_rfp_requirements
 from services.toc_template_mapper import (
     map_toc_to_template, get_mapping, update_mapping, MapperError,
 )
@@ -63,6 +65,86 @@ def create_app():
     register_error_handlers(app)
 
     return app
+
+
+# ── 요구사항 파서-AI 병합 헬퍼 ────────────────────────────────
+def _merge_parser_into_analysis(result_dict: dict, parser_result: dict) -> dict:
+    """파서 결과를 AI 분석 결과에 병합한다.
+
+    전략: 파서 결과(테이블/텍스트 기반)를 우선하고, AI 결과로 빈 필드를 보완.
+    overview, scoring, toc 등 AI 전용 필드는 그대로 유지한다.
+    """
+    parser_reqs = parser_result.get('requirements', [])
+    if not parser_reqs:
+        return result_dict
+
+    # AI 요구사항을 id 기준으로 인덱싱
+    ai_by_id: dict[str, dict] = {}
+    for r in result_dict.get('requirements', []):
+        rid = r.get('id', '')
+        if rid:
+            ai_by_id[rid] = r
+
+    merged = []
+    seen_ids: set[str] = set()
+
+    for pr in parser_reqs:
+        req_id = pr.get('req_id', '')
+        if not req_id or req_id in seen_ids:
+            continue
+        seen_ids.add(req_id)
+
+        # 파서 definition + detail → desc
+        definition = (pr.get('definition') or '').strip()
+        detail = (pr.get('detail') or '').strip()
+        if definition and detail:
+            desc = f"{definition}\n{detail}"
+        else:
+            desc = definition or detail
+
+        item = {
+            'id': req_id,
+            'name': (pr.get('name') or '').strip(),
+            'category': (pr.get('category') or '').strip(),
+            'desc': desc,
+            'level': '',
+            # 파서 전용 필드 보존
+            'category_code': pr.get('category_code', ''),
+            'definition': definition,
+            'detail': detail,
+            'output_info': (pr.get('output_info') or '').strip(),
+            'related_reqs': (pr.get('related_reqs') or '').strip(),
+            'source': (pr.get('source') or '').strip(),
+            'parse_method': pr.get('parse_method', ''),
+        }
+
+        # AI 결과로 빈 필드 보완
+        ai_item = ai_by_id.get(req_id, {})
+        if not item['name'] and ai_item.get('name'):
+            item['name'] = ai_item['name']
+        if not item['category'] and ai_item.get('category'):
+            item['category'] = ai_item['category']
+        if not item['desc'] and ai_item.get('desc'):
+            item['desc'] = ai_item['desc']
+        if not item['level'] and ai_item.get('level'):
+            item['level'] = ai_item['level']
+
+        merged.append(item)
+
+    # AI에만 있는 요구사항 추가 (파서가 놓친 것)
+    for r in result_dict.get('requirements', []):
+        rid = r.get('id', '')
+        if rid and rid not in seen_ids:
+            merged.append(r)
+            seen_ids.add(rid)
+
+    result_dict['requirements'] = merged
+
+    # 파서 통계/요약 추가 (프론트엔드에서 참조 가능)
+    result_dict['parser_stats'] = parser_result.get('stats', {})
+    result_dict['parser_summary'] = parser_result.get('summary', [])
+
+    return result_dict
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -114,16 +196,50 @@ def register_routes(app):
             }), 422
 
         # ── AI 분석 ──────────────────────────────────────────
+        ai_failed = False
         try:
             analyzer = RfpAnalyzer()
             analysis = analyzer.analyze(extraction.full_text)
+            result_dict = analysis.to_dict()
         except RfpAnalysisError as exc:
-            logger.error('RFP 분석 실패: %s', exc)
-            return jsonify({
-                'error': f'RFP 분석 중 오류가 발생했습니다: {exc}'
-            }), 422
+            logger.warning('AI 분석 실패 (파서 폴백 시도): %s', exc)
+            ai_failed = True
+            # 파서로 폴백하기 위해 빈 구조 생성
+            result_dict = {
+                'overview': None,
+                'requirements': [],
+                'scoring': [],
+                'toc': [],
+            }
 
-        result_dict = analysis.to_dict()
+        # ── 요구사항 파서 병합 (파서 우선, AI 보완) ─────────
+        try:
+            # file_bytes를 임시 파일로 저장하여 pdfplumber에 전달
+            with tempfile.NamedTemporaryFile(
+                suffix='.pdf', delete=False,
+            ) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+
+            try:
+                parser_result = parse_rfp_requirements(tmp_path)
+                result_dict = _merge_parser_into_analysis(
+                    result_dict, parser_result,
+                )
+                logger.info(
+                    '요구사항 파서 병합 완료: %d건 (completeness %.1f%%)',
+                    len(result_dict.get('requirements', [])),
+                    parser_result.get('stats', {}).get('completeness_pct', 0),
+                )
+            finally:
+                os.unlink(tmp_path)
+        except Exception as exc:
+            logger.warning('요구사항 파서 실행/병합 실패: %s', exc)
+            # AI도 실패하고 파서도 실패하면 에러 반환
+            if ai_failed:
+                return jsonify({
+                    'error': 'AI 분석과 요구사항 파서 모두 실패했습니다.'
+                }), 422
 
         # 최근 분석 결과 저장 (Excel 다운로드용)
         global _last_analysis, _rfp_full_text
@@ -279,6 +395,20 @@ def register_routes(app):
         except TocManagerError as exc:
             return jsonify({'error': str(exc)}), 422
         return jsonify(template), 201
+
+    @app.route('/api/toc/templates/<template_id>', methods=['PUT'])
+    def api_toc_templates_update(template_id):
+        """커스텀 TOC 템플릿 수정"""
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '요청 데이터가 없습니다.'}), 400
+        try:
+            updated = update_toc_template(template_id, data)
+        except TocManagerError as exc:
+            return jsonify({'error': str(exc)}), 422
+        if not updated:
+            return jsonify({'error': '템플릿을 찾을 수 없습니다.'}), 404
+        return jsonify(updated)
 
     @app.route('/api/toc/templates/<template_id>', methods=['DELETE'])
     def api_toc_templates_delete(template_id):
@@ -463,7 +593,12 @@ def register_routes(app):
             }), 404
 
         try:
-            buf = export_to_excel(_last_analysis)
+            # 현재 세션 TOC가 있으면 분석 결과 대신 사용
+            export_data = dict(_last_analysis)
+            current_toc = get_current_toc()
+            if current_toc.get('items'):
+                export_data['toc'] = current_toc['items']
+            buf = export_to_excel(export_data)
             filename = generate_filename(_last_analysis.get('overview'))
         except Exception as exc:
             logger.error('Excel 생성 실패: %s', exc)

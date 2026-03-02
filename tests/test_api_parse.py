@@ -79,8 +79,9 @@ class TestPdfExtractionErrors:
 class TestAnalysisErrors:
     @patch('app.RfpAnalyzer')
     @patch('app.PdfExtractor')
-    def test_analysis_error_returns_422(self, MockExtractor, MockAnalyzer, client):
-        """AI 분석 실패 시 422 에러"""
+    @patch('app.parse_rfp_requirements')
+    def test_analysis_error_fallback_to_parser(self, MockParser, MockExtractor, MockAnalyzer, client):
+        """AI 분석 실패 시 파서 폴백으로 200 반환"""
         ext_instance = MockExtractor.return_value
         ext_instance.extract_from_bytes.return_value = PdfExtractionResult(
             filename='test.pdf',
@@ -92,10 +93,37 @@ class TestAnalysisErrors:
         analyzer_instance = MockAnalyzer.return_value
         analyzer_instance.analyze.side_effect = RfpAnalysisError('API 키 오류')
 
+        MockParser.return_value = {
+            'summary': [], 'requirements': [], 'requirement_list': [],
+            'stats': {'parsed_total': 0, 'completeness_pct': 0},
+        }
+
+        data = {'file': _make_pdf_file()}
+        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        assert resp.status_code == 200
+
+    @patch('app.RfpAnalyzer')
+    @patch('app.PdfExtractor')
+    @patch('app.parse_rfp_requirements')
+    def test_both_fail_returns_422(self, MockParser, MockExtractor, MockAnalyzer, client):
+        """AI 분석과 파서 모두 실패 시 422 에러"""
+        ext_instance = MockExtractor.return_value
+        ext_instance.extract_from_bytes.return_value = PdfExtractionResult(
+            filename='test.pdf',
+            total_pages=1,
+            pages=[PageContent(page_number=1, text='RFP 내용', extraction_method='text')],
+            full_text='RFP 내용',
+        )
+
+        analyzer_instance = MockAnalyzer.return_value
+        analyzer_instance.analyze.side_effect = RfpAnalysisError('API 키 오류')
+
+        MockParser.side_effect = Exception('파서 실패')
+
         data = {'file': _make_pdf_file()}
         resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
         assert resp.status_code == 422
-        assert '분석 중 오류' in resp.get_json()['error']
+        assert '모두 실패' in resp.get_json()['error']
 
 
 # ── 정상 응답 형식 테스트 ────────────────────────────────────

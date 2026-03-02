@@ -211,6 +211,32 @@ def create_toc_template(data: dict) -> dict:
     return template
 
 
+def update_toc_template(template_id: str, data: dict) -> dict | None:
+    """커스텀 TOC 템플릿을 수정합니다."""
+    for t in BUILTIN_TOC_TEMPLATES:
+        if t['id'] == template_id:
+            raise TocManagerError('내장 템플릿은 수정할 수 없습니다.')
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        raise TocManagerError('템플릿 이름을 입력해주세요.')
+
+    items = data.get('items', [])
+    if not isinstance(items, list) or not items:
+        raise TocManagerError('목차 항목이 필요합니다.')
+
+    validated_items = _validate_toc_items(items)
+
+    customs = _load_custom_templates()
+    for t in customs:
+        if t['id'] == template_id:
+            t['name'] = name
+            t['items'] = validated_items
+            _save_custom_templates(customs)
+            return t
+    return None
+
+
 def delete_toc_template(template_id: str) -> bool:
     """커스텀 TOC 템플릿을 삭제합니다."""
     for t in BUILTIN_TOC_TEMPLATES:

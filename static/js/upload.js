@@ -505,10 +505,12 @@
   }
 
   function populateResult(apiData) {
-    var overview     = apiData.overview;
-    var requirements = apiData.requirements || [];
-    var scoring      = apiData.scoring || [];
-    var toc          = apiData.toc || [];
+    var overview       = apiData.overview;
+    var requirements   = apiData.requirements || [];
+    var scoring        = apiData.scoring || [];
+    var toc            = apiData.toc || [];
+    var parserStats    = apiData.parser_stats   || null;
+    var parserSummary  = apiData.parser_summary || [];
 
     /* 결과 요약 카드 채우기 */
     var summaryData = {
@@ -522,48 +524,37 @@
       if (el) el.textContent = summaryData[id];
     }
 
-    /* 파싱 품질 분석 (StateUI가 있을 때) */
+    /* ① 탭 콘텐츠를 먼저 채워서 비어있지 않은 탭의 empty 상태를 숨긴다 */
     var qualityResult = null;
     if (typeof window.StateUI !== 'undefined') {
       qualityResult = window.StateUI.analyzeParsingQuality(apiData);
-
-      /* 파싱 경고 표시 */
-      if (qualityResult.warnings.length > 0) {
-        window.StateUI.showParsingWarnings(qualityResult.warnings);
-      }
-
-      /* 빈 탭 상태 업그레이드 */
-      var tabKeys = ['overview', 'requirements', 'scoring', 'toc'];
-      for (var t = 0; t < tabKeys.length; t++) {
-        window.StateUI.upgradeEmptyState(tabKeys[t]);
-      }
     }
 
-    /* 사업개요 탭 콘텐츠 채우기 */
     populateOverviewTab(overview, qualityResult ? qualityResult.fieldScores : null);
-
-    /* 요구사항 탭 콘텐츠 채우기 */
-    populateRequirementsTab(requirements);
-
-    /* 배점기준 탭 콘텐츠 채우기 */
+    populateRequirementsTab(requirements, parserStats, parserSummary);
     populateScoringTab(scoring);
+    populateTocTab(toc, requirements);
 
-    /* 제안목차 탭 콘텐츠 채우기 */
-    populateTocTab(toc);
-
-    /* 빈 탭에 경고 알림 표시 */
+    /* ② 데이터가 없는 탭에만 빈 상태 업그레이드 + 경고 알림 표시 */
     if (typeof window.StateUI !== 'undefined') {
       if (!overview) {
+        window.StateUI.upgradeEmptyState('overview');
         window.StateUI.showTabAlert('overview', 'error', '사업개요 데이터를 추출하지 못했습니다. PDF 문서의 형식을 확인해주세요.');
       }
       if (requirements.length === 0) {
+        window.StateUI.upgradeEmptyState('requirements');
         window.StateUI.showTabAlert('requirements', 'warning', '요구사항을 추출하지 못했습니다. RFP에 요구사항 섹션이 포함되어 있는지 확인해주세요.');
       }
       if (scoring.length === 0) {
+        window.StateUI.upgradeEmptyState('scoring');
         window.StateUI.showTabAlert('scoring', 'warning', '배점기준을 추출하지 못했습니다. 평가기준표가 포함된 PDF인지 확인해주세요.');
       }
-      if (toc.length === 0) {
-        window.StateUI.showTabAlert('toc', 'info', '제안목차를 자동 생성하지 못했습니다. 요구사항 분석 후 수동으로 구성할 수 있습니다.');
+      /* TOC 빈 상태는 TocEditor가 직접 관리 (템플릿 선택/수동 작성 안내 포함)
+         — upgradeEmptyState, showTabAlert 불필요 */
+
+      /* 파싱 경고 표시 (데이터가 있지만 불완전한 항목만) */
+      if (qualityResult && qualityResult.warnings.length > 0) {
+        window.StateUI.showParsingWarnings(qualityResult.warnings);
       }
     }
 
@@ -674,91 +665,148 @@
   /* ============================================================
      요구사항 탭 콘텐츠 렌더링
      ============================================================ */
-  function populateRequirementsTab(requirements) {
+  function populateRequirementsTab(requirements, parserStats, parserSummary) {
     var reqContent = document.getElementById('tabpanel-requirements-content');
     var reqEmpty   = document.getElementById('tabpanel-requirements-empty');
     if (!reqContent) return;
 
-    /* 데이터가 없거나 빈 배열이면 빈 상태 표시 */
     if (!requirements || requirements.length === 0) {
       if (reqEmpty) reqEmpty.hidden = false;
       return;
     }
 
-    /* 분류 → CSS 클래스 매핑 */
+    /* 분류 → CSS 클래스 매핑 (약칭 + 풀네임 + category_code) */
     var categoryClassMap = {
-      '기능': 'is-func',
-      '비기능': 'is-nonfunc',
-      '성능': 'is-perf',
-      '보안': 'is-security',
-      '데이터': 'is-data',
-      '인터페이스': 'is-interface'
+      '기능': 'is-func',     '기능 요구사항': 'is-func',
+      '비기능': 'is-nonfunc', '비기능 요구사항': 'is-nonfunc',
+      '성능': 'is-perf',     '성능 요구사항': 'is-perf',
+      '보안': 'is-security', '보안 요구사항': 'is-security',
+      '데이터': 'is-data',   '데이터 요구사항': 'is-data',
+      '인터페이스': 'is-interface', '인터페이스 요구사항': 'is-interface'
+    };
+    var codeClassMap = {
+      'SFR': 'is-func',  'SNR': 'is-nonfunc', 'PER': 'is-perf',
+      'SER': 'is-security', 'SSR': 'is-security',
+      'DAR': 'is-data',  'SDR': 'is-data',
+      'SIR': 'is-interface',
+      'TER': 'is-perf',  'QUR': 'is-nonfunc',
+      'PSR': 'is-nonfunc', 'PMR': 'is-nonfunc', 'MPR': 'is-nonfunc',
+      'ECR': 'is-data',  'COR': 'is-interface', 'CSR': 'is-interface'
     };
 
-    /* 분류 목록 추출 */
-    var categories = [];
-    for (var i = 0; i < requirements.length; i++) {
-      if (categories.indexOf(requirements[i].category) === -1) {
-        categories.push(requirements[i].category);
+    /* 인덱스 부여 (상세 보기에서 참조) */
+    for (var idx = 0; idx < requirements.length; idx++) {
+      requirements[idx]._index = idx;
+    }
+
+    var html = '';
+
+    /* ── 1. 파싱 통계 카드 ── */
+    if (parserStats) {
+      var compPct = Math.min(parserStats.completeness_pct || 0, 100);
+      var detPct  = Math.min(parserStats.detail_completeness_pct || 0, 100);
+      var compColor = compPct >= 95 ? 'is-success' : compPct >= 80 ? 'is-warning' : 'is-error';
+      var detColor  = detPct  >= 95 ? 'is-success' : detPct  >= 80 ? 'is-warning' : 'is-error';
+
+      html += '<div class="req-stats-card">';
+      html +=   '<div class="req-stats-header">';
+      html +=     '<span class="req-stats-title">파싱 현황</span>';
+      html +=     '<span class="req-stats-total">총 <strong>' + (parserStats.parsed_total || requirements.length) + '</strong>건 추출</span>';
+      html +=   '</div>';
+
+      html +=   '<div class="req-stats-row">';
+      html +=     '<span class="req-stats-label">요구사항 완성도</span>';
+      html +=     '<span class="req-stats-value">' + (parserStats.completeness_pct || 0) + '%</span>';
+      html +=   '</div>';
+      html +=   '<div class="req-stats-bar"><div class="req-stats-bar-fill ' + compColor + '" style="width:' + compPct + '%"></div></div>';
+
+      html +=   '<div class="req-stats-row">';
+      html +=     '<span class="req-stats-label">세부내용 완성도</span>';
+      html +=     '<span class="req-stats-value">' + (parserStats.detail_completeness_pct || 0) + '%</span>';
+      html +=   '</div>';
+      html +=   '<div class="req-stats-bar"><div class="req-stats-bar-fill ' + detColor + '" style="width:' + detPct + '%"></div></div>';
+
+      html +=   '<div class="req-stats-chips">';
+      if (parserStats.table_parsed > 0) html += '<span class="req-stats-chip is-table">테이블 ' + parserStats.table_parsed + '</span>';
+      if (parserStats.text_parsed > 0)  html += '<span class="req-stats-chip is-text">텍스트 ' + parserStats.text_parsed + '</span>';
+      if (parserStats.list_only > 0)    html += '<span class="req-stats-chip is-list">목록만 ' + parserStats.list_only + '</span>';
+      html +=     '<span class="req-stats-chip is-cat">분류 ' + (parserStats.categories_found || 0) + '개</span>';
+      html +=   '</div>';
+      html += '</div>';
+    }
+
+    /* ── 2. 분류별 뱃지 ── */
+    if (parserSummary && parserSummary.length > 0) {
+      html += '<div class="req-cat-badges" id="req-cat-badges">';
+      html +=   '<div class="req-cat-badges-header">';
+      html +=     '<span class="req-cat-badges-title">분류별 요구사항</span>';
+      html +=     '<button type="button" class="req-cat-badges-toggle" id="req-cat-badges-toggle" aria-expanded="true">접기</button>';
+      html +=   '</div>';
+      html +=   '<div class="req-cat-badges-list" id="req-cat-badges-list">';
+      html +=     '<button type="button" class="req-cat-badge-btn is-active" data-category="all">';
+      html +=       '<span class="req-cat-badge-name">전체</span>';
+      html +=       '<span class="req-cat-badge-count">' + requirements.length + '</span>';
+      html +=     '</button>';
+      for (var ps = 0; ps < parserSummary.length; ps++) {
+        var s = parserSummary[ps];
+        var shortName = (s.category || '').replace(/\s*요구사항$/, '');
+        html += '<button type="button" class="req-cat-badge-btn" data-category="' + escapeHtml(s.category || '') + '">';
+        html +=   '<span class="req-cat-badge-code">' + escapeHtml(s.code || '') + '</span>';
+        html +=   '<span class="req-cat-badge-name">' + escapeHtml(shortName) + '</span>';
+        html +=   '<span class="req-cat-badge-count">' + (s.count || 0) + '</span>';
+        html += '</button>';
       }
+      html +=   '</div>';
+      html += '</div>';
     }
 
-    /* 통계 계산 */
-    var mandatoryCount = 0;
-    var optionalCount = 0;
-    for (var s = 0; s < requirements.length; s++) {
-      if (requirements[s].level === '필수') mandatoryCount++;
-      else optionalCount++;
-    }
-
-    /* ── 툴바 HTML ── */
-    var html = '<div class="req-toolbar">';
-    html += '<div class="req-filter-group">';
-    html += '<span class="req-filter-label">분류</span>';
-    html += '<select class="req-filter-select" id="req-category-filter" aria-label="분류 필터">';
-    html += '<option value="all">전체 (' + requirements.length + ')</option>';
-    for (var c = 0; c < categories.length; c++) {
-      var catCount = 0;
-      for (var cc = 0; cc < requirements.length; cc++) {
-        if (requirements[cc].category === categories[c]) catCount++;
-      }
-      html += '<option value="' + escapeHtml(categories[c]) + '">' + escapeHtml(categories[c]) + ' (' + catCount + ')</option>';
-    }
-    html += '</select>';
-    html += '</div>';
-    html += '<div class="req-search-box">';
-    html += '<input type="text" class="req-search-input" id="req-search-input" placeholder="ID 또는 요구사항명 검색" aria-label="요구사항 검색">';
-    html += '</div>';
-    html += '</div>';
-
-    /* ── 통계 요약 ── */
-    html += '<div class="req-summary">';
-    html += '<span class="req-summary-item">전체 <span class="req-summary-count">' + requirements.length + '</span>건</span>';
-    html += '<span class="req-summary-item"><span class="req-summary-dot is-mandatory"></span> 필수 <span class="req-summary-count">' + mandatoryCount + '</span></span>';
-    html += '<span class="req-summary-item"><span class="req-summary-dot is-optional"></span> 선택 <span class="req-summary-count">' + optionalCount + '</span></span>';
-    html += '<span class="req-summary-item" id="req-filtered-count" hidden>검색 결과: <span class="req-summary-count" id="req-filtered-num">0</span>건</span>';
+    /* ── 3. 툴바 ── */
+    html += '<div class="req-toolbar">';
+    html +=   '<div class="req-filter-group">';
+    html +=     '<select class="req-filter-select" id="req-method-filter" aria-label="파싱방식 필터">';
+    html +=       '<option value="all">파싱: 전체</option>';
+    html +=       '<option value="table">테이블</option>';
+    html +=       '<option value="text">텍스트</option>';
+    html +=       '<option value="ai">AI</option>';
+    html +=       '<option value="list_only">목록만</option>';
+    html +=     '</select>';
+    html +=     '<label class="req-toggle-label">';
+    html +=       '<input type="checkbox" id="req-missing-only" class="req-toggle-check">';
+    html +=       '<span>미완성만</span>';
+    html +=     '</label>';
+    html +=   '</div>';
+    html +=   '<div class="req-sort-group">';
+    html +=     '<select class="req-filter-select" id="req-sort" aria-label="정렬">';
+    html +=       '<option value="id">ID순</option>';
+    html +=       '<option value="category">분류순</option>';
+    html +=       '<option value="name">이름순</option>';
+    html +=     '</select>';
+    html +=   '</div>';
+    html +=   '<div class="req-search-box">';
+    html +=     '<input type="text" class="req-search-input" id="req-search-input" placeholder="ID, 요구사항명, 정의 검색" aria-label="요구사항 검색">';
+    html +=   '</div>';
+    html +=   '<span class="req-filter-count" id="req-filtered-count" hidden>검색 결과: <strong id="req-filtered-num">0</strong>건</span>';
     html += '</div>';
 
-    /* ── 테이블 ── */
+    /* ── 4. 테이블 ── */
     html += '<div class="req-table-wrap">';
     html += '<table class="req-table" id="req-table">';
     html += '<caption class="sr-only">RFP 요구사항 목록 – 총 ' + requirements.length + '건</caption>';
     html += '<thead><tr>';
-    html += '<th scope="col" class="req-col-category">분류</th>';
     html += '<th scope="col" class="req-col-id">ID</th>';
     html += '<th scope="col" class="req-col-name">요구사항명</th>';
-    html += '<th scope="col" class="req-col-desc">상세설명</th>';
-    html += '<th scope="col" class="req-col-level">응낙수준</th>';
+    html += '<th scope="col" class="req-col-category">분류</th>';
+    html += '<th scope="col" class="req-col-def">정의</th>';
+    html += '<th scope="col" class="req-col-detail">세부</th>';
+    html += '<th scope="col" class="req-col-method">파싱</th>';
     html += '</tr></thead>';
     html += '<tbody id="req-table-body">';
     for (var r = 0; r < requirements.length; r++) {
-      html += buildReqRow(requirements[r], categoryClassMap);
+      html += buildReqRow(requirements[r], categoryClassMap, codeClassMap);
     }
-    html += '</tbody>';
-    html += '</table>';
-    html += '</div>';
+    html += '</tbody></table></div>';
 
-    /* ── 검색 결과 없음 ── */
+    /* ── 5. 검색 결과 없음 ── */
     html += '<div class="req-empty-result" id="req-empty-result" hidden>';
     html += '<svg class="req-empty-result-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
     html += '<p class="req-empty-result-text">검색 결과가 없습니다</p>';
@@ -767,8 +815,7 @@
     reqContent.innerHTML = html;
     if (reqEmpty) reqEmpty.hidden = true;
 
-    /* ── 이벤트 바인딩 ── */
-    bindRequirementsEvents(requirements, categoryClassMap);
+    bindRequirementsEvents(requirements, categoryClassMap, codeClassMap);
   }
 
   /* ============================================================
@@ -927,78 +974,118 @@
   }
 
   /* ── 요구사항 행 HTML 생성 ── */
-  function buildReqRow(req, classMap) {
-    var isMandatory = req.level === '필수';
-    var catClass = classMap[req.category] || 'is-func';
-    var needsToggle = req.desc && req.desc.length > 80;
+  function buildReqRow(req, classMap, codeMap) {
+    var code = req.category_code || '';
+    var catShort = code || (req.category || '').replace(/\s*요구사항$/, '');
+    var catClass = (code && codeMap[code]) || classMap[req.category] || classMap[catShort] || 'is-func';
+    var hasDef    = req.definition && req.definition.trim() !== '';
+    var hasDetail = req.detail && req.detail.trim() !== '';
+    var methodClass = { table: 'is-table', text: 'is-text', ai: 'is-ai', list_only: 'is-list' }[req.parse_method] || '';
+    var methodLabel = { table: '테이블', text: '텍스트', ai: 'AI', list_only: '목록' }[req.parse_method] || '—';
 
-    /* 신뢰도 검사: ID 또는 설명 누락 시 '검토 필요' 표시 */
-    var needsReview = (!req.id || req.id.trim() === '') || (!req.desc || req.desc.trim() === '');
-    var reviewBadge = '';
-    if (needsReview && typeof window.StateUI !== 'undefined') {
-      reviewBadge = ' ' + window.StateUI.buildConfidenceBadge(needsReview ? 30 : 80);
-    }
+    var row = '<tr class="req-row" data-category="' + escapeHtml(req.category) + '"';
+    row += ' data-id="' + escapeHtml(req.id) + '"';
+    row += ' data-name="' + escapeHtml(req.name) + '"';
+    row += ' data-method="' + escapeHtml(req.parse_method || '') + '"';
+    row += ' data-has-detail="' + (hasDetail ? '1' : '0') + '"';
+    row += ' data-req-index="' + (req._index != null ? req._index : '') + '">';
 
-    var rowClass = isMandatory ? 'is-mandatory' : '';
-    if (needsReview) rowClass += ' needs-review';
-
-    var row = '<tr class="' + rowClass + '" data-category="' + escapeHtml(req.category) + '" data-id="' + escapeHtml(req.id) + '" data-name="' + escapeHtml(req.name) + '">';
-    row += '<td class="req-col-category" data-label="분류"><span class="req-category-badge ' + catClass + '">' + escapeHtml(req.category) + '</span></td>';
     row += '<td class="req-col-id" data-label="ID"><span class="req-id">' + escapeHtml(req.id || '—') + '</span></td>';
-    row += '<td class="req-col-name" data-label="요구사항명"><span class="req-name">' + escapeHtml(req.name) + '</span>' + reviewBadge + '</td>';
-    row += '<td class="req-col-desc" data-label="상세설명">';
-    if (!req.desc || req.desc.trim() === '') {
-      row += '<span class="req-desc-text" style="color:var(--krds-text-tertiary);font-style:italic">(상세설명 없음)</span>';
-    } else {
-      row += '<div class="req-desc-text">' + escapeHtml(req.desc) + '</div>';
-      if (needsToggle) {
-        row += '<button type="button" class="req-desc-toggle" aria-label="상세설명 펼치기">';
-        row += '더보기 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>';
-        row += '</button>';
-      }
-    }
-    row += '</td>';
-    row += '<td class="req-col-level" data-label="응낙수준"><span class="req-level-badge ' + (isMandatory ? 'is-mandatory' : 'is-optional') + '">' + escapeHtml(req.level) + '</span></td>';
+    row += '<td class="req-col-name" data-label="요구사항명"><span class="req-name">' + escapeHtml(req.name) + '</span></td>';
+    row += '<td class="req-col-category" data-label="분류"><span class="req-category-badge ' + catClass + '">' + escapeHtml(catShort) + '</span></td>';
+    row += '<td class="req-col-def" data-label="정의"><span class="req-presence ' + (hasDef ? 'is-ok' : 'is-missing') + '">' + (hasDef ? '&#10003;' : '&#9888;') + '</span></td>';
+    row += '<td class="req-col-detail" data-label="세부"><span class="req-presence ' + (hasDetail ? 'is-ok' : 'is-missing') + '">' + (hasDetail ? '&#10003;' : '&#9888;') + '</span></td>';
+    row += '<td class="req-col-method" data-label="파싱"><span class="req-method-badge ' + methodClass + '">' + escapeHtml(methodLabel) + '</span></td>';
     row += '</tr>';
     return row;
   }
 
-  /* ── 요구사항 이벤트 바인딩 (필터, 검색, 토글) ── */
-  function bindRequirementsEvents(requirements, classMap) {
-    var filterSelect  = document.getElementById('req-category-filter');
+  /* ── 요구사항 이벤트 바인딩 ── */
+  function bindRequirementsEvents(requirements, classMap, codeMap) {
+    var methodFilter  = document.getElementById('req-method-filter');
+    var missingCheck  = document.getElementById('req-missing-only');
+    var sortSelect    = document.getElementById('req-sort');
     var searchInput   = document.getElementById('req-search-input');
     var tableBody     = document.getElementById('req-table-body');
     var tableWrap     = document.querySelector('.req-table-wrap');
     var emptyResult   = document.getElementById('req-empty-result');
     var filteredCount = document.getElementById('req-filtered-count');
     var filteredNum   = document.getElementById('req-filtered-num');
+    var badgeList     = document.getElementById('req-cat-badges-list');
+    var badgeToggle   = document.getElementById('req-cat-badges-toggle');
 
-    if (!filterSelect || !searchInput || !tableBody) return;
+    if (!tableBody) return;
 
     var currentCategory = 'all';
-    var currentSearch = '';
+    var currentMethod   = 'all';
+    var currentSort     = 'id';
+    var missingOnly     = false;
+    var currentSearch   = '';
 
-    /* 상세설명 펼치기/접기 (이벤트 위임) */
+    /* ── 행 클릭 → 인라인 상세 패널 ── */
     tableBody.addEventListener('click', function (e) {
-      var toggleBtn = e.target.closest('.req-desc-toggle');
-      if (!toggleBtn) return;
+      /* 텍스트 선택 중이면 무시 */
+      if (window.getSelection && window.getSelection().toString().length > 1) return;
 
-      var descText = toggleBtn.previousElementSibling;
-      if (!descText) return;
+      var row = e.target.closest('tr.req-row');
+      if (!row) return;
 
-      var isExpanded = descText.classList.toggle('is-expanded');
-      toggleBtn.classList.toggle('is-expanded', isExpanded);
+      var idxStr = row.getAttribute('data-req-index');
+      if (idxStr === '' || idxStr === null) return;
+      var reqIdx = parseInt(idxStr, 10);
+      if (isNaN(reqIdx) || !requirements[reqIdx]) return;
+      var req = requirements[reqIdx];
 
-      if (isExpanded) {
-        toggleBtn.innerHTML = '접기 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>';
-        toggleBtn.setAttribute('aria-label', '상세설명 접기');
-      } else {
-        toggleBtn.innerHTML = '더보기 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>';
-        toggleBtn.setAttribute('aria-label', '상세설명 펼치기');
+      /* 이미 열린 상세 행이면 닫기 */
+      var next = row.nextElementSibling;
+      if (next && next.classList.contains('req-detail-row')) {
+        next.remove();
+        row.classList.remove('is-expanded');
+        return;
       }
+
+      /* 다른 열린 상세 행 닫기 */
+      var openRows = tableBody.querySelectorAll('.req-detail-row');
+      for (var d = 0; d < openRows.length; d++) {
+        if (openRows[d].previousElementSibling) openRows[d].previousElementSibling.classList.remove('is-expanded');
+        openRows[d].remove();
+      }
+
+      /* 상세 패널 HTML 생성 */
+      var dh = '<tr class="req-detail-row"><td colspan="6">';
+      dh += '<div class="req-detail-panel">';
+
+      dh += '<div class="req-detail-section">';
+      dh += '<h5 class="req-detail-label">정의</h5>';
+      dh += '<div class="req-detail-text">' + (req.definition ? escapeHtml(req.definition) : '<span class="req-detail-empty">정의 없음</span>') + '</div>';
+      dh += '</div>';
+
+      dh += '<div class="req-detail-section">';
+      dh += '<h5 class="req-detail-label">세부내용</h5>';
+      dh += '<div class="req-detail-text">' + (req.detail ? escapeHtml(req.detail) : '<span class="req-detail-empty">세부내용 없음</span>') + '</div>';
+      dh += '</div>';
+
+      if (req.output_info) {
+        dh += '<div class="req-detail-section">';
+        dh += '<h5 class="req-detail-label">산출정보</h5>';
+        dh += '<div class="req-detail-text">' + escapeHtml(req.output_info) + '</div>';
+        dh += '</div>';
+      }
+
+      if (req.related_reqs) {
+        dh += '<div class="req-detail-section">';
+        dh += '<h5 class="req-detail-label">관련 요구사항</h5>';
+        dh += '<div class="req-detail-text">' + escapeHtml(req.related_reqs) + '</div>';
+        dh += '</div>';
+      }
+
+      dh += '</div></td></tr>';
+
+      row.classList.add('is-expanded');
+      row.insertAdjacentHTML('afterend', dh);
     });
 
-    /* 필터 + 검색 적용 */
+    /* ── 필터 + 검색 + 정렬 적용 ── */
     function applyFilter() {
       var filtered = [];
       var searchLower = currentSearch.toLowerCase();
@@ -1006,53 +1093,103 @@
       for (var i = 0; i < requirements.length; i++) {
         var req = requirements[i];
         var matchCategory = (currentCategory === 'all') || (req.category === currentCategory);
-        var matchSearch = !currentSearch ||
-          req.id.toLowerCase().indexOf(searchLower) !== -1 ||
-          req.name.toLowerCase().indexOf(searchLower) !== -1;
+        var matchMethod   = (currentMethod === 'all') || (req.parse_method === currentMethod);
+        var matchMissing  = !missingOnly || (!req.detail || req.detail.trim() === '');
+        var matchSearch   = !currentSearch ||
+          (req.id || '').toLowerCase().indexOf(searchLower) !== -1 ||
+          (req.name || '').toLowerCase().indexOf(searchLower) !== -1 ||
+          (req.definition || '').toLowerCase().indexOf(searchLower) !== -1;
 
-        if (matchCategory && matchSearch) {
+        if (matchCategory && matchMethod && matchMissing && matchSearch) {
           filtered.push(req);
         }
       }
 
+      /* 정렬 */
+      if (currentSort === 'category') {
+        filtered.sort(function (a, b) { return (a.category || '').localeCompare(b.category || ''); });
+      } else if (currentSort === 'name') {
+        filtered.sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+      }
+      /* 'id' = 기본 순서 (파서 정렬 유지) */
+
       /* 테이블 리렌더 */
       var rowsHtml = '';
       for (var j = 0; j < filtered.length; j++) {
-        rowsHtml += buildReqRow(filtered[j], classMap);
+        rowsHtml += buildReqRow(filtered[j], classMap, codeMap);
       }
       tableBody.innerHTML = rowsHtml;
 
-      /* 검색어 하이라이트 */
-      if (currentSearch) {
-        highlightSearch(tableBody, currentSearch);
-      }
+      if (currentSearch) highlightSearch(tableBody, currentSearch);
 
-      /* 결과 없음 표시 */
       var hasResults = filtered.length > 0;
       if (tableWrap) tableWrap.hidden = !hasResults;
       if (emptyResult) emptyResult.hidden = hasResults;
 
-      /* 필터링 카운트 표시 */
-      var isFiltered = currentCategory !== 'all' || currentSearch;
+      var isFiltered = currentCategory !== 'all' || currentMethod !== 'all' || missingOnly || currentSearch;
       if (filteredCount) filteredCount.hidden = !isFiltered;
       if (filteredNum) filteredNum.textContent = String(filtered.length);
     }
 
-    /* 분류 필터 */
-    filterSelect.addEventListener('change', function () {
-      currentCategory = filterSelect.value;
-      applyFilter();
-    });
-
-    /* ID/이름 검색 (디바운스) */
-    var searchTimer = null;
-    searchInput.addEventListener('input', function () {
-      if (searchTimer) clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () {
-        currentSearch = searchInput.value.trim();
+    /* ── 분류 뱃지 클릭 ── */
+    if (badgeList) {
+      badgeList.addEventListener('click', function (e) {
+        var btn = e.target.closest('.req-cat-badge-btn');
+        if (!btn) return;
+        currentCategory = btn.getAttribute('data-category') || 'all';
+        var allBtns = badgeList.querySelectorAll('.req-cat-badge-btn');
+        for (var b = 0; b < allBtns.length; b++) {
+          allBtns[b].classList.toggle('is-active', allBtns[b] === btn);
+        }
         applyFilter();
-      }, 250);
-    });
+      });
+    }
+
+    /* 뱃지 접기/펼치기 */
+    if (badgeToggle && badgeList) {
+      badgeToggle.addEventListener('click', function () {
+        var hidden = !badgeList.hidden;
+        badgeList.hidden = hidden;
+        badgeToggle.textContent = hidden ? '펼치기' : '접기';
+        badgeToggle.setAttribute('aria-expanded', String(!hidden));
+      });
+    }
+
+    /* ── 파싱방식 필터 ── */
+    if (methodFilter) {
+      methodFilter.addEventListener('change', function () {
+        currentMethod = methodFilter.value;
+        applyFilter();
+      });
+    }
+
+    /* ── 미완성만 ── */
+    if (missingCheck) {
+      missingCheck.addEventListener('change', function () {
+        missingOnly = missingCheck.checked;
+        applyFilter();
+      });
+    }
+
+    /* ── 정렬 ── */
+    if (sortSelect) {
+      sortSelect.addEventListener('change', function () {
+        currentSort = sortSelect.value;
+        applyFilter();
+      });
+    }
+
+    /* ── 검색 (디바운스) ── */
+    if (searchInput) {
+      var searchTimer = null;
+      searchInput.addEventListener('input', function () {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          currentSearch = searchInput.value.trim();
+          applyFilter();
+        }, 250);
+      });
+    }
   }
 
   /* ── 검색어 하이라이트 ── */
@@ -1079,28 +1216,24 @@
   /* ============================================================
      제안목차 탭 콘텐츠 렌더링 (TocEditor에 위임)
      ============================================================ */
-  function populateTocTab(tocData) {
+  function populateTocTab(tocData, requirements) {
     var tocContent = document.getElementById('tabpanel-toc-content');
     var tocEmpty   = document.getElementById('tabpanel-toc-empty');
     if (!tocContent) return;
 
-    /* 데이터가 없거나 빈 배열이면 빈 상태 표시 */
-    if (!tocData || tocData.length === 0) {
-      if (tocEmpty) tocEmpty.hidden = false;
-      /* TocEditor도 초기화 (빈 상태에서도 템플릿 적용·추가 가능) */
-      if (typeof window.TocEditor !== 'undefined') {
-        if (tocEmpty) tocEmpty.hidden = true;
-        window.TocEditor.init('tabpanel-toc-content', []);
-      }
+    /* TocEditor가 있으면 항상 위임 (빈 배열이든 데이터든)
+       TocEditor.init() 내부에서 서버 TOC를 비동기 로드 후 empty 상태를 직접 관리 */
+    if (typeof window.TocEditor !== 'undefined') {
+      if (tocEmpty) tocEmpty.hidden = true;   /* TocEditor가 모든 상태를 관리 */
+      window.TocEditor.init('tabpanel-toc-content', tocData || [], requirements || []);
       return;
     }
 
-    if (tocEmpty) tocEmpty.hidden = true;
-
-    /* TocEditor가 로드되어 있으면 위임 */
-    if (typeof window.TocEditor !== 'undefined') {
-      window.TocEditor.init('tabpanel-toc-content', tocData);
+    /* TocEditor가 없는 경우 폴백 */
+    if (!tocData || tocData.length === 0) {
+      if (tocEmpty) tocEmpty.hidden = false;
     } else {
+      if (tocEmpty) tocEmpty.hidden = true;
       tocContent.innerHTML = '<p style="color:var(--krds-text-tertiary);">목차 에디터를 로드할 수 없습니다.</p>';
     }
   }

@@ -93,10 +93,11 @@ class TestPdfExtractionToAnalysis:
 class TestApiEndToEnd:
     """PDF 업로드 → 분석 → Excel 다운로드 전체 흐름"""
 
+    @patch('app.parse_rfp_requirements', return_value={'requirements': [], 'stats': {}, 'summary': []})
     @patch('app.RfpAnalyzer')
-    def test_upload_rfp_pdf_and_get_analysis(self, MockAnalyzer, client):
+    def test_upload_rfp_pdf_and_get_analysis(self, MockAnalyzer, MockParser, client):
         """실제 PDF를 업로드하면 분석 결과 JSON을 받는다"""
-        # RfpAnalyzer만 모킹 (PdfExtractor는 실제 동작)
+        # RfpAnalyzer와 파서 모킹 (PdfExtractor는 실제 동작)
         analyzer_instance = MockAnalyzer.return_value
         analyzer_instance.analyze.return_value = RfpAnalysisResult(
             overview=RfpOverview(

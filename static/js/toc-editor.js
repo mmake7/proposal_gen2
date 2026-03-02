@@ -1,6 +1,6 @@
 /* ============================================================
-   TOC Editor – Interactive Tree Editor
-   제안목차 트리 에디터 (인라인 편집, 추가/삭제, 들여쓰기, 드래그&드롭)
+   TOC Editor – Table-based Interactive Editor
+   제안목차 테이블 에디터 (엑셀 동일 형식, 인라인 편집, 요구사항 매핑)
    ============================================================ */
 (function () {
   'use strict';
@@ -10,14 +10,16 @@
   var API_TOC_APPLY = '/api/toc/current/apply-template';
   var API_TOC_FINALIZE = '/api/toc/current/finalize';
 
-  var ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-  var KOREAN = ['가', '나', '다', '라', '마', '바', '사', '아', '자', '차', '카', '타', '파', '하'];
+  var ROMAN = ['\u2160', '\u2161', '\u2162', '\u2163', '\u2164',
+               '\u2165', '\u2166', '\u2167', '\u2168', '\u2169',
+               '\u216A', '\u216B'];  /* Ⅰ~Ⅻ */
 
   var containerId = null;
   var tocData = [];
+  var reqData = [];
   var finalized = false;
   var saveTimer = null;
-  var dragSrcPath = null;
+  var dragSrcIdx = null;
 
   /* ============================================================
      Utilities
@@ -43,35 +45,6 @@
     }, 3000);
   }
 
-  function autoNumber(items, level) {
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      item.level = level;
-      if (level === 1) {
-        item.number = ROMAN[i] || '' + (i + 1);
-      } else if (level === 2) {
-        item.number = '' + (i + 1);
-      } else {
-        item.number = KOREAN[i] || String.fromCharCode(0xAC00 + i);
-      }
-      if (item.children && item.children.length > 0) {
-        autoNumber(item.children, level + 1);
-      }
-    }
-  }
-
-  function flattenItems(items, path) {
-    var result = [];
-    for (var i = 0; i < items.length; i++) {
-      var p = path.concat([i]);
-      result.push({ item: items[i], path: p });
-      if (items[i].children && items[i].children.length > 0) {
-        result = result.concat(flattenItems(items[i].children, p));
-      }
-    }
-    return result;
-  }
-
   function countItems(items) {
     var c = 0;
     for (var i = 0; i < items.length; i++) {
@@ -87,6 +60,148 @@
       current = current[path[i]].children || [];
     }
     return current[path[path.length - 1]] || null;
+  }
+
+  function getParentList(items, path) {
+    var current = items;
+    for (var i = 0; i < path.length - 1; i++) {
+      if (!current[path[i]]) return [];
+      current = current[path[i]].children || [];
+    }
+    return current;
+  }
+
+  function parsePath(pathStr) {
+    return pathStr.split('-').map(Number);
+  }
+
+  /* ============================================================
+     Hierarchical Numbering (엑셀과 동일)
+     ============================================================ */
+  function flattenHierarchical(items, out, parentPrefix, depth) {
+    for (var idx = 0; idx < items.length; idx++) {
+      var item = items[idx];
+      var labelNumber, childPrefix;
+
+      if (depth === 1) {
+        var roman = ROMAN[idx] || '' + (idx + 1);
+        labelNumber = roman + '.';
+        childPrefix = '' + (idx + 1);
+      } else if (depth === 2) {
+        var num = '' + (idx + 1);
+        labelNumber = num + '.';
+        childPrefix = (parentPrefix || '') + num + '.';
+      } else {
+        var full = parentPrefix + (idx + 1) + '.';
+        labelNumber = full;
+        childPrefix = full;
+      }
+
+      var indent = '';
+      for (var s = 1; s < depth; s++) indent += '\u00A0\u00A0\u00A0\u00A0';
+
+      out.push({
+        level: depth,
+        label: indent + labelNumber + ' ' + (item.title || ''),
+        labelNumber: labelNumber,
+        title: item.title || '',
+        description: item.description || '',
+        path: item._path,
+        reqIds: ''
+      });
+
+      var children = item.children || [];
+      if (children.length > 0) {
+        flattenHierarchical(children, out, childPrefix, depth + 1);
+      }
+    }
+  }
+
+  /* ============================================================
+     Requirement ↔ TOC Matching (엑셀 매핑 로직과 동일)
+     ============================================================ */
+  function extractKeywords(text) {
+    if (!text) return [];
+    var matches = text.match(/[가-힣a-zA-Z0-9]{2,}/g);
+    return matches ? matches.map(function (w) { return w.toLowerCase(); }) : [];
+  }
+
+  function matchRequirements(flatRows) {
+    if (!reqData || reqData.length === 0) return;
+
+    var entries = [];
+    for (var r = 0; r < reqData.length; r++) {
+      var req = reqData[r];
+      var rid = req.id || '';
+      var rname = (req.name || '').trim();
+      if (!rid || !rname) continue;
+      entries.push({
+        id: rid,
+        name: rname,
+        nameLower: rname.toLowerCase(),
+        keywords: extractKeywords(rname)
+      });
+    }
+    if (entries.length === 0) return;
+
+    for (var i = 0; i < flatRows.length; i++) {
+      var row = flatRows[i];
+      var title = row.title;
+      if (!title) continue;
+
+      var titleLower = title.toLowerCase();
+      var titleKw = extractKeywords(title);
+      var titleKwSet = {};
+      for (var k = 0; k < titleKw.length; k++) titleKwSet[titleKw[k]] = true;
+
+      var matched = [];
+      for (var j = 0; j < entries.length; j++) {
+        var e = entries[j];
+
+        /* 방법 1: 부분 문자열 포함 */
+        if (titleLower.indexOf(e.nameLower) !== -1 || e.nameLower.indexOf(titleLower) !== -1) {
+          matched.push(e.id);
+          continue;
+        }
+
+        /* 방법 2: 키워드 50% 이상 일치 */
+        if (e.keywords.length > 0 && titleKw.length > 0) {
+          var overlap = 0;
+          for (var m = 0; m < e.keywords.length; m++) {
+            if (titleKwSet[e.keywords[m]]) overlap++;
+          }
+          if (overlap >= Math.max(1, e.keywords.length * 0.5)) {
+            matched.push(e.id);
+          }
+        }
+      }
+
+      if (matched.length > 0) {
+        /* 중복 제거 */
+        var seen = {};
+        var unique = [];
+        for (var u = 0; u < matched.length; u++) {
+          if (!seen[matched[u]]) {
+            seen[matched[u]] = true;
+            unique.push(matched[u]);
+          }
+        }
+        row.reqIds = unique.join(', ');
+      }
+    }
+  }
+
+  /* ============================================================
+     Assign internal _path for editing operations
+     ============================================================ */
+  function assignPaths(items, prefix) {
+    for (var i = 0; i < items.length; i++) {
+      var p = prefix.concat([i]);
+      items[i]._path = p.join('-');
+      if (items[i].children && items[i].children.length > 0) {
+        assignPaths(items[i].children, p);
+      }
+    }
   }
 
   /* ============================================================
@@ -131,14 +246,21 @@
   }
 
   /* ============================================================
-     Render
+     Render – Table-based (엑셀 동일 형식)
      ============================================================ */
   function render() {
     var container = document.getElementById(containerId);
     if (!container) return;
 
-    autoNumber(tocData, 1);
+    assignPaths(tocData, []);
     var total = countItems(tocData);
+
+    /* Flatten with hierarchical numbering */
+    var flatRows = [];
+    flattenHierarchical(tocData, flatRows, '', 1);
+
+    /* Match requirements */
+    matchRequirements(flatRows);
 
     var html = '';
 
@@ -161,77 +283,72 @@
     html += '</div>';
     html += '</div>';
 
-    /* ── Summary ── */
-    var l1Count = tocData.length;
-    html += '<div class="toc-summary">';
-    html += '<span class="toc-summary-item">L1 대분류 <strong>' + l1Count + '</strong>개</span>';
-    html += '<span class="toc-summary-divider"></span>';
-    html += '<span class="toc-summary-item">전체 항목 <strong>' + total + '</strong>개</span>';
-    html += '</div>';
-
-    /* ── Tree items ── */
+    /* ── Table ── */
     if (tocData.length === 0) {
-      html += '<div class="toc-editor-empty">목차 항목이 없습니다. "대분류 추가" 버튼을 클릭하거나 표준 템플릿을 적용하세요.</div>';
-    } else {
-      html += '<div class="toc-editor" id="toc-editor-tree">';
-      var flat = flattenItems(tocData, []);
-      for (var i = 0; i < flat.length; i++) {
-        html += renderItem(flat[i].item, flat[i].path);
-      }
+      html += '<div class="toc-editor-empty">';
+      html += '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;margin-bottom:12px"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
+      html += '<p style="font-weight:600;margin:0 0 4px">제안서 목차를 구성해주세요</p>';
+      html += '<p style="opacity:0.65;margin:0">위 드롭다운에서 <strong>표준 템플릿을 선택</strong>하거나, "대분류 추가" 버튼으로 직접 작성할 수 있습니다.</p>';
       html += '</div>';
+    } else {
+      html += '<div class="toc-table-wrap" id="toc-editor-tree">';
+      html += '<table class="toc-table">';
+      html += '<thead><tr>';
+      html += '<th class="toc-th toc-th-label">목차</th>';
+      html += '<th class="toc-th toc-th-req">요구사항 ID</th>';
+      html += '<th class="toc-th toc-th-author">작성담당자</th>';
+      html += '<th class="toc-th toc-th-desc">설명</th>';
+      html += '<th class="toc-th toc-th-actions"></th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+
+      for (var i = 0; i < flatRows.length; i++) {
+        var row = flatRows[i];
+        var level = row.level;
+        var rowClass = 'toc-tr toc-tr-l' + level;
+        if (level === 1) rowClass += ' toc-tr-l1';
+
+        html += '<tr class="' + rowClass + '" data-path="' + esc(row.path) + '" data-idx="' + i + '" draggable="true">';
+
+        /* 목차 (계층형 번호 + 제목) */
+        html += '<td class="toc-td toc-td-label">';
+        html += '<span class="toc-cell-label" data-field="title" data-path="' + esc(row.path) + '">' + esc(row.label) + '</span>';
+        html += '</td>';
+
+        /* 요구사항 ID */
+        html += '<td class="toc-td toc-td-req">' + esc(row.reqIds) + '</td>';
+
+        /* 작성담당자 */
+        html += '<td class="toc-td toc-td-author"></td>';
+
+        /* 설명 */
+        html += '<td class="toc-td toc-td-desc">';
+        html += '<span class="toc-cell-desc" data-field="desc" data-path="' + esc(row.path) + '">';
+        html += row.description ? esc(row.description) : '<span style="opacity:0.35">클릭하여 입력</span>';
+        html += '</span>';
+        html += '</td>';
+
+        /* Actions */
+        html += '<td class="toc-td toc-td-actions">';
+        html += '<div class="toc-row-actions">';
+        html += '<button type="button" class="toc-action-btn toc-add-child-btn" data-path="' + esc(row.path) + '" title="하위 추가"' + (level >= 4 ? ' disabled' : '') + '>';
+        html += '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+        html += '</button>';
+        html += '<button type="button" class="toc-action-btn is-danger toc-delete-btn" data-path="' + esc(row.path) + '" title="삭제">';
+        html += '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+        html += '</button>';
+        html += '</div>';
+        html += '</td>';
+
+        html += '</tr>';
+      }
+
+      html += '</tbody></table></div>';
     }
 
     container.innerHTML = html;
     bindEvents();
     loadTemplateOptions();
-  }
-
-  function renderItem(item, path) {
-    var pathStr = path.join('-');
-    var level = item.level || 1;
-
-    var h = '<div class="toc-editor-item" data-path="' + pathStr + '" data-level="' + level + '" draggable="true">';
-
-    /* Drag handle */
-    h += '<span class="toc-editor-drag" title="드래그하여 이동">';
-    h += '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="4" r="2"/><circle cx="16" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="20" r="2"/><circle cx="16" cy="20" r="2"/></svg>';
-    h += '</span>';
-
-    /* Number */
-    h += '<span class="toc-editor-number">' + esc(item.number) + '</span>';
-
-    /* Content */
-    h += '<div class="toc-editor-content">';
-    h += '<div class="toc-editor-title" data-path="' + pathStr + '">' + esc(item.title) + '</div>';
-    if (item.description) {
-      h += '<div class="toc-editor-desc" data-path="' + pathStr + '">' + esc(item.description) + '</div>';
-    } else {
-      h += '<div class="toc-editor-desc" data-path="' + pathStr + '" style="opacity:0.4">설명 추가...</div>';
-    }
-    h += '</div>';
-
-    /* Actions */
-    h += '<div class="toc-editor-actions">';
-    /* Outdent (level up) */
-    h += '<button type="button" class="toc-editor-action-btn toc-outdent-btn" data-path="' + pathStr + '" title="레벨 올리기"' + (level <= 1 ? ' disabled' : '') + '>';
-    h += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>';
-    h += '</button>';
-    /* Indent (level down) */
-    h += '<button type="button" class="toc-editor-action-btn toc-indent-btn" data-path="' + pathStr + '" title="레벨 내리기"' + (level >= 3 ? ' disabled' : '') + '>';
-    h += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
-    h += '</button>';
-    /* Add child */
-    h += '<button type="button" class="toc-editor-action-btn toc-add-child-btn" data-path="' + pathStr + '" title="하위 항목 추가"' + (level >= 3 ? ' disabled' : '') + '>';
-    h += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-    h += '</button>';
-    /* Delete */
-    h += '<button type="button" class="toc-editor-action-btn is-danger toc-delete-btn" data-path="' + pathStr + '" title="삭제">';
-    h += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-    h += '</button>';
-    h += '</div>';
-
-    h += '</div>';
-    return h;
   }
 
   /* ============================================================
@@ -243,20 +360,13 @@
     var finalizeBtn = document.getElementById('toc-finalize-btn');
     var templateSelect = document.getElementById('toc-template-select');
 
-    /* ── Inline edit (title) ── */
     if (tree) {
       tree.addEventListener('click', function (e) {
-        var titleEl = e.target.closest('.toc-editor-title');
-        if (titleEl) { startEditTitle(titleEl); return; }
+        var labelEl = e.target.closest('.toc-cell-label');
+        if (labelEl) { startEditTitle(labelEl); return; }
 
-        var descEl = e.target.closest('.toc-editor-desc');
+        var descEl = e.target.closest('.toc-cell-desc');
         if (descEl) { startEditDesc(descEl); return; }
-
-        var outdentBtn = e.target.closest('.toc-outdent-btn');
-        if (outdentBtn && !outdentBtn.disabled) { doOutdent(outdentBtn.dataset.path); return; }
-
-        var indentBtn = e.target.closest('.toc-indent-btn');
-        if (indentBtn && !indentBtn.disabled) { doIndent(indentBtn.dataset.path); return; }
 
         var addChildBtn = e.target.closest('.toc-add-child-btn');
         if (addChildBtn && !addChildBtn.disabled) { doAddChild(addChildBtn.dataset.path); return; }
@@ -267,77 +377,68 @@
 
       /* ── Drag & Drop ── */
       tree.addEventListener('dragstart', function (e) {
-        var item = e.target.closest('.toc-editor-item');
-        if (!item) return;
-        dragSrcPath = item.dataset.path;
-        item.classList.add('is-dragging');
+        var tr = e.target.closest('.toc-tr');
+        if (!tr) return;
+        dragSrcIdx = tr.dataset.idx;
+        tr.classList.add('is-dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', dragSrcPath);
+        e.dataTransfer.setData('text/plain', dragSrcIdx);
       });
 
       tree.addEventListener('dragend', function (e) {
-        var item = e.target.closest('.toc-editor-item');
-        if (item) item.classList.remove('is-dragging');
+        var tr = e.target.closest('.toc-tr');
+        if (tr) tr.classList.remove('is-dragging');
         clearDragStates(tree);
-        dragSrcPath = null;
+        dragSrcIdx = null;
       });
 
       tree.addEventListener('dragover', function (e) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        var target = e.target.closest('.toc-editor-item');
-        if (!target || target.dataset.path === dragSrcPath) return;
-
+        var tr = e.target.closest('.toc-tr');
+        if (!tr || tr.dataset.idx === dragSrcIdx) return;
         clearDragStates(tree);
-        var rect = target.getBoundingClientRect();
-        var y = e.clientY - rect.top;
-        if (y < rect.height / 2) {
-          target.classList.add('drag-over-above');
+        var rect = tr.getBoundingClientRect();
+        if ((e.clientY - rect.top) < rect.height / 2) {
+          tr.classList.add('drag-over-above');
         } else {
-          target.classList.add('drag-over-below');
+          tr.classList.add('drag-over-below');
         }
       });
 
       tree.addEventListener('dragleave', function (e) {
-        var target = e.target.closest('.toc-editor-item');
-        if (target) {
-          target.classList.remove('drag-over-above', 'drag-over-below');
-        }
+        var tr = e.target.closest('.toc-tr');
+        if (tr) tr.classList.remove('drag-over-above', 'drag-over-below');
       });
 
       tree.addEventListener('drop', function (e) {
         e.preventDefault();
-        var target = e.target.closest('.toc-editor-item');
-        if (!target || !dragSrcPath) return;
+        var tr = e.target.closest('.toc-tr');
+        if (!tr || dragSrcIdx === null) return;
 
-        var srcPath = parsePath(dragSrcPath);
-        var dstPath = parsePath(target.dataset.path);
-        var rect = target.getBoundingClientRect();
+        var srcPath = parsePath(tr.closest('table').querySelector('[data-idx="' + dragSrcIdx + '"]').dataset.path);
+        var dstPath = parsePath(tr.dataset.path);
+        var rect = tr.getBoundingClientRect();
         var above = (e.clientY - rect.top) < rect.height / 2;
 
         doMove(srcPath, dstPath, above);
         clearDragStates(tree);
-        dragSrcPath = null;
+        dragSrcIdx = null;
       });
     }
 
-    /* ── Add root ── */
     if (addRootBtn) {
       addRootBtn.addEventListener('click', function () {
-        tocData.push({
-          level: 1, number: '', title: '새 대분류', description: '', children: []
-        });
+        tocData.push({ level: 1, number: '', title: '새 대분류', description: '', children: [] });
         finalized = false;
         render();
         scheduleSave();
       });
     }
 
-    /* ── Finalize ── */
     if (finalizeBtn) {
       finalizeBtn.addEventListener('click', function () {
         if (finalized) {
-          /* Unfinalize */
           finalized = false;
           render();
           scheduleSave();
@@ -352,7 +453,6 @@
       });
     }
 
-    /* ── Template select ── */
     if (templateSelect) {
       templateSelect.addEventListener('change', function () {
         var tid = this.value;
@@ -368,14 +468,10 @@
   }
 
   function clearDragStates(container) {
-    var items = container.querySelectorAll('.toc-editor-item');
-    for (var i = 0; i < items.length; i++) {
-      items[i].classList.remove('drag-over', 'drag-over-above', 'drag-over-below');
+    var rows = container.querySelectorAll('.toc-tr');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.remove('drag-over-above', 'drag-over-below');
     }
-  }
-
-  function parsePath(pathStr) {
-    return pathStr.split('-').map(Number);
   }
 
   /* ============================================================
@@ -389,7 +485,7 @@
 
     var input = document.createElement('input');
     input.type = 'text';
-    input.className = 'toc-editor-title-input';
+    input.className = 'toc-inline-input';
     input.value = item.title;
     el.textContent = '';
     el.appendChild(input);
@@ -402,7 +498,6 @@
       render();
       scheduleSave();
     }
-
     input.addEventListener('blur', save);
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
@@ -418,11 +513,10 @@
 
     var input = document.createElement('input');
     input.type = 'text';
-    input.className = 'toc-editor-desc-input';
+    input.className = 'toc-inline-input';
     input.value = item.description || '';
     input.placeholder = '설명을 입력하세요...';
     el.textContent = '';
-    el.style.opacity = '';
     el.appendChild(input);
     input.focus();
 
@@ -431,7 +525,6 @@
       render();
       scheduleSave();
     }
-
     input.addEventListener('blur', save);
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
@@ -442,49 +535,6 @@
   /* ============================================================
      TOC Operations
      ============================================================ */
-  function doOutdent(pathStr) {
-    var path = parsePath(pathStr);
-    if (path.length < 2) return; /* Already at root level */
-
-    var parentPath = path.slice(0, -1);
-    var idx = path[path.length - 1];
-    var parentItems = getParentList(tocData, path);
-    var item = parentItems[idx];
-
-    /* Remove from current position */
-    parentItems.splice(idx, 1);
-
-    /* Insert after parent in grandparent list */
-    var grandParentList = getParentList(tocData, parentPath);
-    var parentIdx = parentPath[parentPath.length - 1];
-    grandParentList.splice(parentIdx + 1, 0, item);
-
-    finalized = false;
-    render();
-    scheduleSave();
-  }
-
-  function doIndent(pathStr) {
-    var path = parsePath(pathStr);
-    var idx = path[path.length - 1];
-    if (idx === 0) return; /* No previous sibling to become parent */
-
-    var parentList = getParentList(tocData, path);
-    var item = parentList[idx];
-    var prevSibling = parentList[idx - 1];
-
-    /* Remove from current position */
-    parentList.splice(idx, 1);
-
-    /* Add as last child of previous sibling */
-    if (!prevSibling.children) prevSibling.children = [];
-    prevSibling.children.push(item);
-
-    finalized = false;
-    render();
-    scheduleSave();
-  }
-
   function doAddChild(pathStr) {
     var path = parsePath(pathStr);
     var item = getItemAtPath(tocData, path);
@@ -519,15 +569,13 @@
   }
 
   function doMove(srcPath, dstPath, above) {
-    if (pathsEqual(srcPath, dstPath)) return;
+    if (srcPath.join('-') === dstPath.join('-')) return;
 
-    /* Extract source item */
     var srcList = getParentList(tocData, srcPath);
     var srcIdx = srcPath[srcPath.length - 1];
     if (srcIdx < 0 || srcIdx >= srcList.length) return;
     var item = srcList.splice(srcIdx, 1)[0];
 
-    /* Recalculate dstPath after removal if needed */
     var dstList = getParentList(tocData, dstPath);
     var dstIdx = dstPath[dstPath.length - 1];
     if (!above) dstIdx++;
@@ -537,23 +585,6 @@
     finalized = false;
     render();
     scheduleSave();
-  }
-
-  function getParentList(items, path) {
-    var current = items;
-    for (var i = 0; i < path.length - 1; i++) {
-      if (!current[path[i]]) return [];
-      current = current[path[i]].children || [];
-    }
-    return current;
-  }
-
-  function pathsEqual(a, b) {
-    if (a.length !== b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
   }
 
   /* ============================================================
@@ -627,9 +658,10 @@
   /* ============================================================
      Public API
      ============================================================ */
-  function init(targetContainerId, initialData) {
+  function init(targetContainerId, initialData, requirements) {
     containerId = targetContainerId;
     tocData = initialData || [];
+    reqData = requirements || [];
     finalized = false;
 
     /* Load current TOC from server if available */
@@ -639,19 +671,25 @@
     xhr.addEventListener('load', function () {
       if (xhr.status === 200 && xhr.response) {
         var serverItems = xhr.response.items || [];
-        /* Use server data if available, otherwise use initial data */
         if (serverItems.length > 0) {
           tocData = serverItems;
         }
         finalized = xhr.response.finalized || false;
       }
+      syncEmptyState();
       render();
     });
     xhr.addEventListener('error', function () {
-      /* On error, just render with initial data */
+      syncEmptyState();
       render();
     });
     xhr.send();
+  }
+
+  /** empty 오버레이를 tocData 유무에 따라 토글 */
+  function syncEmptyState() {
+    var emptyEl = document.getElementById('tabpanel-toc-empty');
+    if (emptyEl) emptyEl.hidden = true;   /* TocEditor가 모든 상태를 직접 관리 */
   }
 
   function getData() {

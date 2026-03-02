@@ -56,10 +56,11 @@ def export_to_excel(data: dict) -> io.BytesIO:
     # 기본 시트 제거 후 순서대로 생성
     wb.remove(wb.active)
 
+    requirements = data.get('requirements', [])
     _build_overview_sheet(wb, data.get('overview'))
-    _build_requirements_sheet(wb, data.get('requirements', []))
+    _build_requirements_sheet(wb, requirements)
     _build_scoring_sheet(wb, data.get('scoring', []))
-    _build_toc_sheet(wb, data.get('toc', []))
+    _build_toc_sheet(wb, data.get('toc', []), requirements)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -249,14 +250,21 @@ def _build_scoring_sheet(wb: Workbook, scoring: list[dict]) -> None:
 
 # ── 제안목차 시트 ────────────────────────────────────────────
 
-_TOC_HEADERS = ['수준', '목차 제목']
+_TOC_HEADERS = ['목차', '요구사항 ID', '작성담당자', '설명']
+
+_ROMAN_NUMERALS = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ',
+                   'Ⅺ', 'Ⅻ', 'XIII', 'XIV', 'XV']
+
+_L1_FILL = PatternFill(start_color='D6E4F0', end_color='D6E4F0', fill_type='solid')
 
 
-def _build_toc_sheet(wb: Workbook, toc: list[dict]) -> None:
+def _build_toc_sheet(
+    wb: Workbook, toc: list[dict], requirements: list[dict] | None = None,
+) -> None:
     ws = wb.create_sheet(title='제안목차')
 
     # 시트 제목
-    ws.merge_cells('A1:B1')
+    ws.merge_cells('A1:D1')
     title_cell = ws['A1']
     title_cell.value = '제안목차'
     title_cell.font = _TITLE_FONT
@@ -273,49 +281,239 @@ def _build_toc_sheet(wb: Workbook, toc: list[dict]) -> None:
     ws.row_dimensions[3].height = 30
 
     if not toc:
-        ws.merge_cells('A4:B4')
+        ws.merge_cells('A4:D4')
         ws['A4'].value = '추출된 목차가 없습니다.'
         ws['A4'].font = _BODY_FONT
-        _auto_column_width(ws, [10, 80])
+        _auto_column_width(ws, [60, 16, 14, 50])
         return
 
-    rows: list[tuple[int, str]] = []
-    _flatten_toc(toc, rows)
+    rows: list[dict] = []
+    _flatten_toc_hierarchical(toc, rows)
+
+    # 요구사항 매핑
+    req_map = _match_requirements_to_toc(rows, requirements or [])
 
     row = 4
-    for level, title in rows:
-        # 수준 표시
-        level_cell = ws.cell(row=row, column=1, value=level)
-        level_cell.font = _BODY_FONT
-        level_cell.border = _THIN_BORDER
-        level_cell.alignment = Alignment(horizontal='center', vertical='center')
+    for i, item in enumerate(rows):
+        level = item['level']
+        label = item['label']
+        req_ids = req_map.get(i, '')
+        description = item['description']
 
-        # 들여쓰기로 계층 표현
-        indent = '    ' * (level - 1)
-        title_cell = ws.cell(row=row, column=2, value=f'{indent}{title}')
-        title_font = Font(
-            name='맑은 고딕',
-            bold=(level <= 1),
-            size=11,
-        )
-        title_cell.font = title_font
-        title_cell.border = _THIN_BORDER
-        title_cell.alignment = _BODY_ALIGNMENT
+        # ── 목차 컬럼 (계층형 번호 + 제목, 들여쓰기) ──
+        toc_cell = ws.cell(row=row, column=1, value=label)
+        if level == 1:
+            toc_cell.font = Font(name='맑은 고딕', bold=True, size=11)
+            toc_cell.fill = _L1_FILL
+        elif level == 2:
+            toc_cell.font = Font(name='맑은 고딕', bold=True, size=11)
+        else:
+            toc_cell.font = _BODY_FONT
+        toc_cell.border = _THIN_BORDER
+        toc_cell.alignment = Alignment(vertical='center', wrap_text=True)
+
+        # ── 요구사항 ID ──
+        req_cell = ws.cell(row=row, column=2, value=req_ids)
+        req_cell.font = _BODY_FONT
+        req_cell.border = _THIN_BORDER
+        req_cell.alignment = Alignment(horizontal='center', vertical='center',
+                                       wrap_text=True)
+        if level == 1:
+            req_cell.fill = _L1_FILL
+
+        # ── 작성담당자 (빈칸) ──
+        author_cell = ws.cell(row=row, column=3, value='')
+        author_cell.font = _BODY_FONT
+        author_cell.border = _THIN_BORDER
+        author_cell.alignment = Alignment(horizontal='center', vertical='center')
+        if level == 1:
+            author_cell.fill = _L1_FILL
+
+        # ── 설명 ──
+        desc_cell = ws.cell(row=row, column=4, value=description)
+        desc_cell.font = _BODY_FONT
+        desc_cell.border = _THIN_BORDER
+        desc_cell.alignment = _BODY_ALIGNMENT
+        if level == 1:
+            desc_cell.fill = _L1_FILL
 
         row += 1
 
-    _auto_column_width(ws, [10, 80])
+    _auto_column_width(ws, [60, 16, 14, 50])
 
 
-def _flatten_toc(items: list[dict], out: list[tuple[int, str]]) -> None:
-    """재귀적으로 TOC 항목을 평탄화합니다."""
-    for item in items:
-        level = item.get('level', 1)
+def _flatten_toc_hierarchical(
+    items: list[dict],
+    out: list[dict],
+    parent_prefix: str = '',
+    depth: int = 1,
+) -> None:
+    """재귀적으로 TOC 항목을 계층형 번호 체계로 평탄화합니다.
+
+    번호 체계:
+      L1: Ⅰ. Ⅱ. Ⅲ. ...
+      L2: 1. 2. 3. ...
+      L3: 1.1. 1.2. 2.1. ...
+      L4: 1.1.1. 1.1.2. ...
+    """
+    for idx, item in enumerate(items):
         title = item.get('title', '')
-        out.append((level, title))
+        description = item.get('description', '')
+
+        # ── 계층형 번호 생성 ──
+        if depth == 1:
+            number = _ROMAN_NUMERALS[idx] if idx < len(_ROMAN_NUMERALS) else str(idx + 1)
+            label_number = f'{number}.'
+            child_prefix = str(idx + 1)
+        elif depth == 2:
+            number = str(idx + 1)
+            label_number = f'{number}.'
+            child_prefix = f'{parent_prefix}{number}.' if parent_prefix else f'{number}.'
+        else:
+            number = f'{parent_prefix}{idx + 1}.'
+            label_number = number
+            child_prefix = number
+
+        # ── 들여쓰기 (L2부터 2칸씩) ──
+        indent = '  ' * (depth - 1)
+        label = f'{indent}{label_number} {title}'
+
+        out.append({
+            'level': depth,
+            'label': label,
+            'title': title,
+            'description': description,
+        })
+
         children = item.get('children', [])
         if children:
-            _flatten_toc(children, out)
+            _flatten_toc_hierarchical(children, out, child_prefix, depth + 1)
+
+
+# ── 요구사항 ↔ 목차 매칭 ──────────────────────────────────────
+
+_STOPWORDS = frozenset({
+    '사업', '시스템', '구축', '개발', '운영', '관리', '서비스',
+    '기능', '구현', '설계', '요구', '사항', '정보', '데이터',
+    '처리', '제공', '수행', '지원', '환경', '방안', '현황',
+    '개요', '목적', '범위', '기간', '내용', '계획', '추진',
+    '대상', '결과', '방법', '작성', '검토', '기타', '기본',
+})
+
+_SECTION_TO_CODE: dict[str, list[str]] = {
+    '기능': ['SFR'],
+    '성능': ['PER'],
+    '인터페이스': ['SIR'],
+    '보안': ['SER', 'SSR'],
+    '데이터': ['DAR', 'SDR'],
+    '테스트': ['TER'],
+    '품질': ['QUR'],
+    '유지관리': ['MPR'],
+    '운영': ['MPR', 'PSR'],
+    '프로젝트': ['PMR', 'PSR'],
+    '장비': ['ECR'],
+    '제약': ['COR'],
+    '컨설팅': ['CSR'],
+}
+
+
+def _extract_keywords(text: str, use_stopwords: bool = True) -> set[str]:
+    """텍스트에서 매칭용 키워드를 추출합니다 (2자 이상 한글 단어)."""
+    import re
+    if not text:
+        return set()
+    words = re.findall(r'[가-힣]{2,}', text)
+    if use_stopwords:
+        return {w for w in words if len(w) >= 2 and w not in _STOPWORDS}
+    return {w for w in words if len(w) >= 2}
+
+
+def _match_requirements_to_toc(
+    toc_rows: list[dict], requirements: list[dict],
+) -> dict[int, str]:
+    """각 TOC 행에 매칭되는 요구사항 ID를 반환합니다.
+
+    매칭 전략:
+      1) 키워드 기반: name + definition + detail에서 추출한 키워드와
+         목차 title + description의 키워드 겹침으로 점수 산출
+      2) 분류 코드 기반: 목차 제목에 분류 키워드가 포함되면 해당 코드의
+         요구사항을 보완적으로 매핑
+
+    L1 항목(Ⅰ, Ⅱ 등)은 매핑을 건너뜁니다.
+
+    Returns:
+        {행_인덱스: "SFR-001, SFR-002", ...}
+    """
+    if not requirements:
+        return {}
+
+    # ── 요구사항별 키워드 사전 구축 ──
+    req_entries: list[tuple[str, set[str], str]] = []  # (id, keywords, code)
+    for req in requirements:
+        rid = req.get('id', '')
+        if not rid:
+            continue
+        kw = set()
+        kw |= _extract_keywords(req.get('name', ''))
+        kw |= _extract_keywords(req.get('definition', ''))
+        detail = (req.get('detail') or '')[:200]
+        kw |= _extract_keywords(detail)
+        code = req.get('category_code', '')
+        req_entries.append((rid, kw, code))
+
+    if not req_entries:
+        return {}
+
+    result: dict[int, str] = {}
+
+    for row_idx, toc_item in enumerate(toc_rows):
+        # L1 (대분류: Ⅰ, Ⅱ) 스킵
+        if toc_item.get('level', 1) <= 1:
+            continue
+
+        title = toc_item.get('title', '')
+        if not title:
+            continue
+
+        toc_kw = _extract_keywords(title)
+        toc_kw |= _extract_keywords(toc_item.get('description', ''))
+
+        if not toc_kw:
+            continue
+
+        # ── 방법 1: 키워드 겹침 점수 ──
+        scored: list[tuple[str, float, int]] = []
+        for rid, req_kw, _ in req_entries:
+            if not req_kw:
+                continue
+            overlap = toc_kw & req_kw
+            if not overlap:
+                continue
+            score = len(overlap) / min(len(toc_kw), len(req_kw))
+            if score >= 0.3 or len(overlap) >= 2:
+                scored.append((rid, score, len(overlap)))
+
+        # 점수 높은 순, 최대 5개
+        scored.sort(key=lambda x: (-x[1], -x[2]))
+        matched_ids: list[str] = [s[0] for s in scored[:5]]
+
+        # ── 방법 2: 분류 코드 보완 (키워드 매칭이 부족할 때) ──
+        if len(matched_ids) < 2:
+            codes: list[str] = []
+            for keyword, code_list in _SECTION_TO_CODE.items():
+                if keyword in title:
+                    codes.extend(code_list)
+            if codes:
+                for rid, _, rcode in req_entries:
+                    if rcode in codes and rid not in matched_ids:
+                        matched_ids.append(rid)
+                        if len(matched_ids) >= 10:
+                            break
+
+        if matched_ids:
+            result[row_idx] = ', '.join(dict.fromkeys(matched_ids))
+
+    return result
 
 
 # ── 유틸리티 ─────────────────────────────────────────────────

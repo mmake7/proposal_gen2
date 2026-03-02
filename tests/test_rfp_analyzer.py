@@ -369,3 +369,76 @@ class TestDataClasses:
         assert d['requirements'] == []
         assert d['scoring'] == []
         assert d['toc'] == []
+
+
+# ── 테스트: 강화된 JSON 파싱 ──────────────────────────────────
+
+class TestRobustJsonParsing:
+    """_parse_response의 강화된 JSON 추출 로직 테스트"""
+
+    def _make_analyzer(self):
+        return RfpAnalyzer(api_key='test-key')
+
+    def test_json_with_leading_trailing_text(self):
+        """앞뒤에 설명 텍스트가 있어도 JSON을 추출한다"""
+        raw = '다음은 분석 결과입니다.\n\n{"overview": {"project_name": "테스트"}, "requirements": [], "scoring": [], "toc": []}\n\n이상입니다.'
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '테스트'
+
+    def test_json_with_trailing_comma(self):
+        """trailing comma가 있는 JSON도 파싱한다"""
+        raw = '{"overview": {"project_name": "테스트",}, "requirements": [], "scoring": [], "toc": [],}'
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '테스트'
+
+    def test_multiple_code_blocks_picks_valid(self):
+        """여러 코드블록 중 유효한 JSON을 찾는다"""
+        raw = (
+            '```\ninvalid json here\n```\n\n'
+            '```json\n{"overview": {"project_name": "정답"}, "requirements": [], "scoring": [], "toc": []}\n```'
+        )
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '정답'
+
+    def test_code_block_without_json_tag(self):
+        """```json 없이 ``` 만 있는 코드블록도 추출한다"""
+        raw = '```\n{"overview": {"project_name": "노태그"}, "requirements": [], "scoring": [], "toc": []}\n```'
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '노태그'
+
+    def test_json_with_line_comments(self):
+        """// 주석이 포함된 JSON도 파싱한다"""
+        raw = (
+            '{\n'
+            '  // 사업 개요\n'
+            '  "overview": {"project_name": "주석제거"},\n'
+            '  "requirements": [],\n'
+            '  "scoring": [],\n'
+            '  "toc": []\n'
+            '}'
+        )
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '주석제거'
+
+    def test_deeply_nested_brace_extraction(self):
+        """중첩된 {} 구조가 있어도 올바르게 추출한다"""
+        raw = (
+            '분석 결과:\n'
+            '{"overview": {"project_name": "중첩", "purpose": "테스트 {중괄호}"}, '
+            '"requirements": [], "scoring": [], "toc": []}\n'
+            '끝.'
+        )
+        analyzer = self._make_analyzer()
+        result = analyzer._parse_response(raw)
+        assert result.overview.project_name == '중첩'
+
+    def test_completely_invalid_raises(self):
+        """JSON이 전혀 없는 응답은 여전히 에러를 발생시킨다"""
+        analyzer = self._make_analyzer()
+        with pytest.raises(RfpAnalysisError, match='파싱'):
+            analyzer._parse_response('이것은 순수 텍스트입니다. 중괄호 없음.')

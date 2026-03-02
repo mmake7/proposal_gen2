@@ -38,10 +38,10 @@ SAMPLE_ANALYSIS = {
         {'category': '가격', 'item': '가격 평가', 'criteria': '적정 가격', 'score': 70},
     ],
     'toc': [
-        {'level': 1, 'title': '사업 이해', 'children': [
-            {'level': 2, 'title': '사업 배경', 'children': []},
+        {'level': 1, 'number': 'I', 'title': '사업 이해', 'description': '사업의 배경과 목적을 이해', 'children': [
+            {'level': 2, 'number': '1', 'title': '사업 배경', 'description': '사업 추진 배경', 'children': []},
         ]},
-        {'level': 1, 'title': '기술 제안', 'children': []},
+        {'level': 1, 'number': 'II', 'title': '기술 제안', 'description': '기술 아키텍처 제안', 'children': []},
     ],
 }
 
@@ -248,14 +248,50 @@ class TestExcelDataAccuracy:
         ws = wb['제안목차']
         assert ws.cell(row=4, column=1).value == '추출된 목차가 없습니다.'
 
-    def test_deeply_nested_toc(self):
-        """3단계 이상 중첩된 목차도 정상 평탄화된다"""
+    def test_toc_hierarchical_numbering(self):
+        """목차 시트가 계층형 번호 체계로 출력된다"""
+        buf = export_to_excel(SAMPLE_ANALYSIS)
+        wb = load_workbook(buf)
+        ws = wb['제안목차']
+        # 헤더 확인 (4컬럼)
+        assert ws.cell(row=3, column=1).value == '목차'
+        assert ws.cell(row=3, column=2).value == '요구사항 ID'
+        assert ws.cell(row=3, column=3).value == '작성담당자'
+        assert ws.cell(row=3, column=4).value == '설명'
+        # L1: Ⅰ. 사업 이해
+        l1_label = ws.cell(row=4, column=1).value
+        assert 'Ⅰ.' in l1_label
+        assert '사업 이해' in l1_label
+        assert ws.cell(row=4, column=4).value == '사업의 배경과 목적을 이해'
+        # L2: 1. 사업 배경 (들여쓰기)
+        l2_label = ws.cell(row=5, column=1).value
+        assert '1.' in l2_label
+        assert '사업 배경' in l2_label
+        # L1: Ⅱ. 기술 제안
+        l1_2_label = ws.cell(row=6, column=1).value
+        assert 'Ⅱ.' in l1_2_label
+        assert '기술 제안' in l1_2_label
+
+    def test_toc_author_column_empty(self):
+        """작성담당자 컬럼은 빈칸이다"""
+        buf = export_to_excel(SAMPLE_ANALYSIS)
+        wb = load_workbook(buf)
+        ws = wb['제안목차']
+        for row in range(4, ws.max_row + 1):
+            assert ws.cell(row=row, column=3).value == '' or ws.cell(row=row, column=3).value is None
+
+    def test_deeply_nested_toc_hierarchical(self):
+        """L3, L4까지 계층형 번호가 올바르게 생성된다"""
         data = {
             **SAMPLE_ANALYSIS,
             'toc': [
-                {'level': 1, 'title': '1장', 'children': [
-                    {'level': 2, 'title': '1.1절', 'children': [
-                        {'level': 3, 'title': '1.1.1항', 'children': []},
+                {'level': 1, 'number': 'I', 'title': '제안개요', 'description': '개요', 'children': [
+                    {'level': 2, 'number': '1', 'title': '사업의 이해', 'description': '', 'children': [
+                        {'level': 3, 'number': '가', 'title': '사업의 배경', 'description': '', 'children': []},
+                        {'level': 3, 'number': '나', 'title': '주요 업무', 'description': '', 'children': [
+                            {'level': 4, 'title': '업무 개요', 'description': '', 'children': []},
+                            {'level': 4, 'title': '시스템 이해', 'description': '', 'children': []},
+                        ]},
                     ]},
                 ]},
             ],
@@ -263,8 +299,134 @@ class TestExcelDataAccuracy:
         buf = export_to_excel(data)
         wb = load_workbook(buf)
         ws = wb['제안목차']
-        # 헤더(3) + 3 항목 = 6행
-        assert ws.max_row == 6
-        assert ws.cell(row=4, column=1).value == 1
-        assert ws.cell(row=5, column=1).value == 2
-        assert ws.cell(row=6, column=1).value == 3
+        # 6 items total: 제안개요, 사업의 이해, 사업의 배경, 주요 업무, 업무 개요, 시스템 이해
+        assert ws.max_row == 9  # 3 header + 6 data
+        # L1: Ⅰ. 제안개요
+        assert 'Ⅰ.' in ws.cell(row=4, column=1).value
+        # L2: 1. 사업의 이해
+        assert '1.' in ws.cell(row=5, column=1).value
+        # L3: 1.1. 사업의 배경
+        assert '1.1.' in ws.cell(row=6, column=1).value
+        # L3: 1.2. 주요 업무
+        assert '1.2.' in ws.cell(row=7, column=1).value
+        # L4: 1.2.1. 업무 개요
+        assert '1.2.1.' in ws.cell(row=8, column=1).value
+        # L4: 1.2.2. 시스템 이해
+        assert '1.2.2.' in ws.cell(row=9, column=1).value
+
+
+# ── 요구사항 ↔ 목차 매핑 테스트 ────────────────────────────
+
+@pytest.mark.unit
+class TestRequirementTocMapping:
+    """_match_requirements_to_toc 매핑 로직 검증"""
+
+    def _make_toc(self, items):
+        """TOC 딕셔너리 → 플랫 행 리스트"""
+        from services.excel_exporter import _flatten_toc_hierarchical
+        rows = []
+        _flatten_toc_hierarchical(items, rows)
+        return rows
+
+    def test_keyword_matching(self):
+        """키워드 겹침으로 올바른 요구사항이 매핑된다"""
+        from services.excel_exporter import _match_requirements_to_toc
+        toc = self._make_toc([
+            {'title': '제안 방안', 'children': [
+                {'title': '인터페이스 설계', 'children': []},
+                {'title': '보안 대책 방안', 'children': []},
+            ]},
+        ])
+        reqs = [
+            {'id': 'SIR-001', 'name': '외부 연계', 'category_code': 'SIR',
+             'definition': '외부 시스템 인터페이스 연계 설계'},
+            {'id': 'SER-001', 'name': '접근 통제', 'category_code': 'SER',
+             'definition': '보안 접근 통제 및 대책 적용'},
+        ]
+        result = _match_requirements_to_toc(toc, reqs)
+        # L2 '인터페이스 설계' → SIR-001
+        matched_values = list(result.values())
+        assert any('SIR-001' in v for v in matched_values)
+
+    def test_l1_items_skipped(self):
+        """L1 항목에는 매핑하지 않는다"""
+        from services.excel_exporter import _match_requirements_to_toc
+        toc = self._make_toc([
+            {'title': '보안 관리', 'children': []},
+        ])
+        reqs = [
+            {'id': 'SER-001', 'name': '보안 정책', 'category_code': 'SER',
+             'definition': '보안 관리 정책 수립'},
+        ]
+        result = _match_requirements_to_toc(toc, reqs)
+        # L1만 있으므로 매핑 없어야 함
+        assert result == {}
+
+    def test_category_code_fallback(self):
+        """키워드 매칭 부족 시 분류 코드로 보완 매핑"""
+        from services.excel_exporter import _match_requirements_to_toc
+        toc = self._make_toc([
+            {'title': '시스템', 'children': [
+                {'title': '보안 방안', 'children': []},
+            ]},
+        ])
+        reqs = [
+            {'id': 'SER-001', 'name': '암호화', 'category_code': 'SER',
+             'definition': '암호화 적용'},
+        ]
+        result = _match_requirements_to_toc(toc, reqs)
+        # '보안' 키워드 → SER 코드 → SER-001 매핑
+        assert any('SER-001' in v for v in result.values())
+
+    def test_empty_requirements_returns_empty(self):
+        """요구사항이 없으면 빈 딕셔너리 반환"""
+        from services.excel_exporter import _match_requirements_to_toc
+        toc = self._make_toc([
+            {'title': '사업 이해', 'children': [
+                {'title': '사업 배경', 'children': []},
+            ]},
+        ])
+        result = _match_requirements_to_toc(toc, [])
+        assert result == {}
+
+    def test_max_five_matches(self):
+        """키워드 매칭은 최대 5개까지"""
+        from services.excel_exporter import _match_requirements_to_toc
+        toc = self._make_toc([
+            {'title': '기능', 'children': [
+                {'title': '통합 검색 기능', 'children': []},
+            ]},
+        ])
+        # 동일 키워드를 가진 10개 요구사항
+        reqs = [
+            {'id': f'SFR-{i:03d}', 'name': f'통합 검색 기능 {i}',
+             'category_code': 'SFR', 'definition': '통합 검색 기능 제공'}
+            for i in range(1, 11)
+        ]
+        result = _match_requirements_to_toc(toc, reqs)
+        for ids_str in result.values():
+            ids = [x.strip() for x in ids_str.split(',')]
+            assert len(ids) <= 5
+
+    def test_mapping_in_excel_output(self):
+        """엑셀 출력에 매핑된 요구사항 ID가 포함된다"""
+        data = {
+            'overview': None,
+            'requirements': [
+                {'id': 'SER-001', 'name': '보안 정책', 'category': '보안',
+                 'category_code': 'SER', 'definition': '보안 대책 수립',
+                 'desc': '보안 대책 수립', 'level': ''},
+            ],
+            'scoring': [],
+            'toc': [
+                {'title': '보안', 'children': [
+                    {'title': '보안 대책', 'description': '보안 정책 및 대책 수립', 'children': []},
+                ]},
+            ],
+        }
+        buf = export_to_excel(data)
+        wb = load_workbook(buf)
+        ws = wb['제안목차']
+        # L2 행 (row 5)의 요구사항 ID 컬럼
+        req_id_cell = ws.cell(row=5, column=2).value
+        assert req_id_cell is not None and 'SER-001' in req_id_cell

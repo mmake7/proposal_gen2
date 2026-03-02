@@ -128,11 +128,18 @@ class RfpAnalysisResult:
 # ── Prompt Template ──────────────────────────────────────────
 
 _SYSTEM_PROMPT = """당신은 한국 공공기관 RFP(제안요청서) 분석 전문가입니다.
-주어진 RFP 텍스트를 분석하여 아래 4가지 항목을 **반드시 JSON 형식**으로 추출해주세요.
+주어진 RFP 텍스트를 분석하여 아래 4가지 항목을 추출해주세요.
+
+## 중요: 출력 규칙
+
+**반드시 순수 JSON만 출력하세요.**
+- 마크다운 코드블록(```)을 사용하지 마세요.
+- JSON 앞뒤에 설명, 인사말, 요약 등 어떤 텍스트도 추가하지 마세요.
+- 응답의 첫 글자는 반드시 `{` 이고, 마지막 글자는 반드시 `}` 여야 합니다.
+- 주석(// 또는 /* */)을 포함하지 마세요.
 
 ## 출력 형식 (JSON)
 
-```json
 {
   "overview": {
     "project_name": "사업명",
@@ -189,7 +196,6 @@ _SYSTEM_PROMPT = """당신은 한국 공공기관 RFP(제안요청서) 분석 �
     }
   ]
 }
-```
 
 ## 규칙
 
@@ -205,8 +211,9 @@ _SYSTEM_PROMPT = """당신은 한국 공공기관 RFP(제안요청서) 분석 �
    - **배점 반영**: scoring 항목이 있으면, 배점이 높은 평가항목이 목차에 충분히 반영되도록 구성하세요.
    - RFP에 목차가 명시되어 있으면 그것을 기반으로 하되, 누락된 부분은 보완하세요.
    - 단순 인사말, 회사 일반 소개 등 불필요한 항목은 제외하세요 (RFP가 명시적으로 요구하는 경우 제외).
-5. 반드시 유효한 JSON만 출력하세요. 추가 설명이나 마크다운 코드블록 없이 순수 JSON만 반환하세요.
-6. 한국어로 작성하세요."""
+5. 한국어로 작성하세요.
+
+다시 한번 강조: 순수 JSON만 출력하세요. 첫 글자 `{`, 마지막 글자 `}`."""
 
 
 # ── Analyzer ─────────────────────────────────────────────────
@@ -318,25 +325,45 @@ class RfpAnalyzer:
         if not result_text.strip():
             raise RfpAnalysisError('AI로부터 빈 응답을 받았습니다.')
 
+        # 디버깅용: 원본 응답을 파일로 저장
+        try:
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, 'last_api_response.txt')
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write(result_text)
+            logger.info('API 원본 응답 저장 완료: %s (%d자)', log_path, len(result_text))
+        except Exception as exc:
+            logger.warning('API 응답 파일 저장 실패: %s', exc)
+
         return result_text
 
     def _parse_response(self, raw: str) -> RfpAnalysisResult:
         """Claude 응답 JSON을 RfpAnalysisResult로 파싱합니다.
 
-        3단계 추출을 시도합니다:
-        1) 마크다운 코드블록(```json ... ```) 내부 추출
+        5단계 추출을 시도합니다:
+        1) 마크다운 코드블록(```json ... ```) 내부 추출 (모든 코드블록 시도)
         2) 응답 전체를 직접 JSON 파싱
-        3) 첫 번째 '{' ~ 마지막 '}' 구간 추출 후 재시도
+        3) 첫 번째 '{' ~ 마지막 '}' 구간 추출
+        4) 위 후보들에서 trailing comma 제거 후 재시도
+        5) 정규식으로 JSON 객체 패턴 추출 후 재시도
         """
+        logger.debug(
+            'AI 응답 파싱 시작 (길이: %d자, 첫 200자: %s)',
+            len(raw), raw[:200],
+        )
+
         candidates: list[str] = []
 
-        # ── 1단계: 코드블록 내부 JSON 추출 ──
-        code_block = re.search(
+        # ── 1단계: 코드블록 내부 JSON 추출 (모든 코드블록) ──
+        code_blocks = re.findall(
             r'```(?:json)?\s*\n?(.*?)\n?\s*```',
             raw, re.DOTALL,
         )
-        if code_block:
-            candidates.append(code_block.group(1).strip())
+        for block in code_blocks:
+            stripped = block.strip()
+            if stripped:
+                candidates.append(stripped)
 
         # ── 2단계: 원본 앞뒤 공백 제거 후 시도 ──
         candidates.append(raw.strip())
@@ -347,25 +374,76 @@ class RfpAnalyzer:
         if first_brace != -1 and last_brace > first_brace:
             candidates.append(raw[first_brace:last_brace + 1])
 
+        # ── 파싱 시도 (원본 후보) ──
         last_err = None
         for idx, text in enumerate(candidates):
             try:
                 data = json.loads(text)
                 if idx > 0:
-                    logger.info('JSON 파싱 %d단계에서 성공', idx + 1)
+                    logger.info('JSON 파싱 %d번째 후보에서 성공', idx + 1)
                 return self._build_result(data)
             except json.JSONDecodeError as exc:
                 last_err = exc
                 continue
 
-        # 모든 단계 실패
+        # ── 4단계: trailing comma 제거 후 재시도 ──
+        for idx, text in enumerate(candidates):
+            cleaned = self._fix_json_quirks(text)
+            if cleaned == text:
+                continue  # 변경 없으면 스킵
+            try:
+                data = json.loads(cleaned)
+                logger.info('JSON 파싱 성공 (trailing comma 제거, 후보 %d)', idx + 1)
+                return self._build_result(data)
+            except json.JSONDecodeError as exc:
+                last_err = exc
+                continue
+
+        # ── 5단계: 정규식으로 JSON 객체 패턴 추출 ──
+        json_objects = re.findall(
+            r'\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',
+            raw, re.DOTALL,
+        )
+        for obj_str in json_objects:
+            if len(obj_str) < 50:  # 너무 짧은 것은 스킵
+                continue
+            for attempt in (obj_str, self._fix_json_quirks(obj_str)):
+                try:
+                    data = json.loads(attempt)
+                    # overview 또는 toc 키가 있는지 확인하여 유효한 결과인지 검증
+                    if isinstance(data, dict) and ('overview' in data or 'toc' in data):
+                        logger.info('JSON 파싱 성공 (정규식 객체 추출)')
+                        return self._build_result(data)
+                except json.JSONDecodeError:
+                    continue
+
+        # 모든 단계 실패 — 콘솔에 앞 2000자 출력
         logger.error(
-            'JSON 파싱 실패 (모든 단계): %s\n원본 응답 전문:\n%s',
-            last_err, raw,
+            'JSON 파싱 실패 (모든 단계 실패)\n'
+            '── 마지막 에러: %s\n'
+            '── 응답 길이: %d자\n'
+            '── 응답 앞 2000자:\n%s',
+            last_err,
+            len(raw),
+            raw[:2000],
         )
         raise RfpAnalysisError(
             'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.'
         ) from last_err
+
+    @staticmethod
+    def _fix_json_quirks(text: str) -> str:
+        """LLM이 자주 생성하는 JSON 오류를 수정합니다.
+
+        - trailing comma 제거: }, ] 앞의 쉼표
+        - 주석 제거: // 한줄 주석
+        """
+        # // 주석 제거 (문자열 내부가 아닌 것만)
+        result = re.sub(r'(?m)^\s*//.*$', '', text)
+        result = re.sub(r'(?<=\S)\s*//[^\n]*', '', result)
+        # trailing comma 제거: ,\s*} 또는 ,\s*]
+        result = re.sub(r',\s*([}\]])', r'\1', result)
+        return result
 
     def _build_result(self, data: dict) -> RfpAnalysisResult:
         """파싱된 dict를 RfpAnalysisResult 객체로 변환합니다."""

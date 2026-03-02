@@ -235,11 +235,19 @@
     if (!Array.isArray(raw)) return [];
     return raw.map(function (item) {
       return {
-        category: item.category || '기능',
-        id:       item.id       || '',
-        name:     item.name     || item.title || '',
-        desc:     item.desc     || item.description || '',
-        level:    item.level    || item.priority || '선택'
+        category:      item.category || '기능',
+        id:            item.id       || '',
+        name:          item.name     || item.title || '',
+        desc:          item.desc     || item.description || '',
+        level:         item.level    || item.priority || '선택',
+        /* 파서 전용 필드 (pass-through) */
+        category_code: item.category_code || '',
+        definition:    item.definition    || '',
+        detail:        item.detail        || '',
+        output_info:   item.output_info   || '',
+        related_reqs:  item.related_reqs  || '',
+        source:        item.source        || '',
+        parse_method:  item.parse_method  || ''
       };
     });
   }
@@ -279,10 +287,12 @@
   /* 전체 응답 정규화 */
   function normalizeResponse(data) {
     return {
-      overview:     normalizeOverview(data.overview),
-      requirements: normalizeRequirements(data.requirements),
-      scoring:      normalizeScoring(data.scoring),
-      toc:          normalizeToc(data.toc)
+      overview:       normalizeOverview(data.overview),
+      requirements:   normalizeRequirements(data.requirements),
+      scoring:        normalizeScoring(data.scoring),
+      toc:            normalizeToc(data.toc),
+      parser_stats:   data.parser_stats   || null,
+      parser_summary: data.parser_summary || []
     };
   }
 
