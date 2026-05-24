@@ -131,8 +131,8 @@
                     <polyline points="20 20 18 20 16 20"/>
                   </svg>
                 </div>
-                <p class="upload-text">RFP PDF 파일을 여기에 끌어다 놓거나 클릭하여 선택하세요</p>
-                <p class="upload-hint" id="upload-hint">PDF 파일만 업로드 가능 (최대 50MB)</p>
+                <p class="upload-text">RFP 파일(PDF, HWPX, DOCX)을 여기에 끌어다 놓거나 클릭하여 선택하세요</p>
+                <p class="upload-hint" id="upload-hint">PDF · HWPX · DOCX (.hwp/.doc는 변환 후) · 최대 50MB</p>
               </div>
 
               <!-- 파일 선택 후: 미리보기 -->
@@ -174,11 +174,11 @@
                 </div>
               </div>
 
-              <label for="upload-input" class="sr-only">RFP PDF 파일 선택</label>
+              <label for="upload-input" class="sr-only">RFP 파일 선택 (PDF, HWPX, DOCX)</label>
               <input
                 type="file"
                 id="upload-input"
-                accept=".pdf,application/pdf"
+                accept=".pdf,.hwpx,.docx,application/pdf"
                 class="sr-only"
                 aria-describedby="upload-hint"
               />
@@ -200,6 +200,19 @@
             </div>
 
             <div class="upload-actions">
+              <fieldset class="engine-toggle" aria-label="분석 엔진 선택">
+                <legend class="sr-only">분석 엔진</legend>
+                <label class="engine-option">
+                  <input type="radio" name="engine" value="v2" checked>
+                  <span class="engine-option-title">v2 멀티에이전트 <span class="engine-option-badge">권장</span></span>
+                  <span class="engine-option-desc">분류·요구사항·배점·검증 5단계, HWPX 지원, Excel/MD 다운로드</span>
+                </label>
+                <label class="engine-option">
+                  <input type="radio" name="engine" value="v1">
+                  <span class="engine-option-title">v1 기본</span>
+                  <span class="engine-option-desc">단일 프롬프트 분석, PDF만</span>
+                </label>
+              </fieldset>
               <button type="button" class="btn btn-primary btn-lg" id="upload-analyze-btn" disabled aria-disabled="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -330,6 +343,19 @@
                 </svg>
                 <span class="btn-label">Excel 다운로드</span>
               </button>
+
+              <!-- v2 전용 다운로드 버튼 (v2 분석 후 노출) -->
+              <div class="v2-download-group" id="v2-download-group" hidden role="group" aria-label="v2 결과물 다운로드">
+                <button type="button" class="btn btn-secondary" id="v2-excel-btn" title="v2 Excel (7시트)">
+                  Excel (v2)
+                </button>
+                <button type="button" class="btn btn-secondary" id="v2-markdown-btn" title="마크다운 보고서">
+                  Markdown
+                </button>
+                <button type="button" class="btn btn-secondary" id="v2-json-btn" title="전체 JSON">
+                  JSON
+                </button>
+              </div>
               <button type="button" class="btn btn-primary btn-lg" id="analysis-proceed-btn">
                 제안서 작성 시작
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -338,6 +364,69 @@
                 </svg>
               </button>
             </div>
+          </div>
+
+          <!-- ============================================================
+               v2 영업 견적 카드 (WBS / 조직도 / M/M)
+               v2 분석 + estimation 데이터 있을 때만 노출
+               ============================================================ -->
+          <div class="card estimation-card" id="estimation-card" hidden aria-labelledby="estimation-title">
+            <div class="estimation-header">
+              <div>
+                <h3 id="estimation-title" class="estimation-title">💼 영업 견적 요약</h3>
+                <p class="estimation-desc">RFP 기반 자동 산정 — 조직 구성 변경 시 화면에서 직접 편집 가능</p>
+              </div>
+              <div class="estimation-totals">
+                <div class="estimation-total-item">
+                  <span class="estimation-total-label">사업기간</span>
+                  <span class="estimation-total-value" id="est-period">—</span>
+                </div>
+                <div class="estimation-total-item">
+                  <span class="estimation-total-label">총 인원</span>
+                  <span class="estimation-total-value" id="est-headcount">—</span>
+                </div>
+                <div class="estimation-total-item estimation-total-highlight">
+                  <span class="estimation-total-label">총 M/M</span>
+                  <span class="estimation-total-value" id="est-total-mm">—</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="estimation-grid">
+              <!-- 조직도 -->
+              <section class="estimation-section">
+                <h4 class="estimation-section-title">조직도</h4>
+                <table class="estimation-table" id="est-org-table">
+                  <thead>
+                    <tr><th>직무</th><th>인원</th><th>등급</th></tr>
+                  </thead>
+                  <tbody id="est-org-tbody"></tbody>
+                </table>
+                <p class="estimation-empty" id="est-org-empty" hidden>인력 정보를 RFP에서 자동 추출하지 못했습니다. (수동 추가 예정)</p>
+              </section>
+
+              <!-- M/M 산정 -->
+              <section class="estimation-section">
+                <h4 class="estimation-section-title">Man-Month 산정</h4>
+                <table class="estimation-table" id="est-mm-table">
+                  <thead>
+                    <tr><th>직무</th><th>인원</th><th>기간(월)</th><th>M/M</th></tr>
+                  </thead>
+                  <tbody id="est-mm-tbody"></tbody>
+                  <tfoot>
+                    <tr><th colspan="3" style="text-align:right;">합계</th><th id="est-mm-total">—</th></tr>
+                  </tfoot>
+                </table>
+              </section>
+            </div>
+
+            <!-- WBS 타임라인 -->
+            <section class="estimation-section estimation-wbs">
+              <h4 class="estimation-section-title">WBS (Work Breakdown Structure)</h4>
+              <div class="estimation-wbs-list" id="est-wbs-list"></div>
+            </section>
+
+            <p class="estimation-notes" id="est-notes"></p>
           </div>
 
           <!-- ============================================================

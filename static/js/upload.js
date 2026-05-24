@@ -354,7 +354,14 @@
       return;
     }
 
-    /* Flask API 호출 */
+    /* 엔진 선택 — radio[name="engine"]에서 읽음. 기본 v2. */
+    var engineRadio = document.querySelector('input[name="engine"]:checked');
+    var selectedEngine = engineRadio ? engineRadio.value : 'v2';
+
+    /* v2 다운로드 버튼 그룹 (v2 분석 시에만 노출) */
+    var v2DownloadGroup = document.getElementById('v2-download-group');
+
+    /* Flask API 호출 — 세 번째 인자로 engine 전달 */
     currentRequest = window.ApiClient.parseRfp(file, {
       onUploadProgress: function (loaded, total) {
         /* 업로드 진행률 → 0~20% */
@@ -377,6 +384,14 @@
         }
         updateProgressBar(100);
         barFill.classList.add('is-complete');
+
+        /* v2 분석이면 다운로드 그룹 + 견적 카드 노출 */
+        if (v2DownloadGroup) {
+          v2DownloadGroup.hidden = (selectedEngine !== 'v2');
+        }
+        if (selectedEngine === 'v2' && data._estimation) {
+          renderEstimationCard(data._estimation);
+        }
 
         /* 응답 정규화 */
         var normalized = window.ApiClient.normalizeResponse(data);
@@ -402,12 +417,162 @@
         currentRequest = null;
         handleAnalysisError(title, desc);
       }
-    });
+    }, { engine: selectedEngine });
 
     /* 서버 분석 대기 중 진행률 애니메이션 시작 (20% ~ 90%) */
     activateStep(0);
     startProgressAnimation();
   }
+
+  /* ── v2 견적 카드 렌더 ── */
+  function renderEstimationCard(est) {
+    var card = document.getElementById('estimation-card');
+    if (!card || !est) return;
+
+    // 헤더 총계
+    var period = est.project_months ? est.project_months.toFixed(0) + '개월' : '미산정';
+    document.getElementById('est-period').textContent = period;
+    var totalHead = (est.organization || []).reduce(function (s, o) { return s + (o.headcount || 0); }, 0);
+    document.getElementById('est-headcount').textContent = totalHead + '명';
+    document.getElementById('est-total-mm').textContent = (est.total_mm || 0).toFixed(1);
+
+    // 조직도
+    var orgBody = document.getElementById('est-org-tbody');
+    var orgEmpty = document.getElementById('est-org-empty');
+    orgBody.innerHTML = '';
+    if (!est.organization || est.organization.length === 0) {
+      orgEmpty.hidden = false;
+    } else {
+      orgEmpty.hidden = true;
+      est.organization.forEach(function (org) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + escapeHtml(org.role) + '</td>' +
+                       '<td class="num">' + org.headcount + '명</td>' +
+                       '<td>' + escapeHtml(org.grade || '-') + '</td>';
+        orgBody.appendChild(tr);
+      });
+    }
+
+    // M/M
+    var mmBody = document.getElementById('est-mm-tbody');
+    mmBody.innerHTML = '';
+    (est.man_months || []).forEach(function (mm) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escapeHtml(mm.role) + '</td>' +
+                     '<td class="num">' + mm.headcount + '</td>' +
+                     '<td class="num">' + mm.months.toFixed(0) + '</td>' +
+                     '<td class="num strong">' + mm.total_mm.toFixed(1) + '</td>';
+      mmBody.appendChild(tr);
+    });
+    document.getElementById('est-mm-total').textContent = (est.total_mm || 0).toFixed(1);
+
+    // WBS 타임라인
+    var wbsList = document.getElementById('est-wbs-list');
+    wbsList.innerHTML = '';
+    (est.wbs || []).forEach(function (phase) {
+      var div = document.createElement('div');
+      div.className = 'estimation-wbs-phase';
+      var wrange = phase.week_start ? ('W' + phase.week_start + '~W' + phase.week_end) : '-';
+      var acts = (phase.activities || []).map(function (a) {
+        return '<li>' + escapeHtml(a) + '</li>';
+      }).join('');
+      var dels = (phase.deliverables || []).map(function (d) {
+        return '<li>' + escapeHtml(d) + '</li>';
+      }).join('');
+      div.innerHTML =
+        '<div class="estimation-wbs-head">' +
+          '<span class="estimation-wbs-name">' + escapeHtml(phase.name) + '</span>' +
+          '<span class="estimation-wbs-meta">' + wrange + ' · ' + phase.duration_weeks + '주</span>' +
+        '</div>' +
+        '<div class="estimation-wbs-body">' +
+          '<div><h5>활동</h5><ul>' + acts + '</ul></div>' +
+          '<div><h5>산출물</h5><ul>' + dels + '</ul></div>' +
+        '</div>';
+      wbsList.appendChild(div);
+    });
+
+    // notes
+    var notesEl = document.getElementById('est-notes');
+    notesEl.textContent = est.notes || '';
+
+    card.hidden = false;
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /* ── 데모 모드: URL ?demo=estimation 이면 KIAT mock 견적 자동 렌더 ── */
+  function checkDemoMode() {
+    var params = new URLSearchParams(location.search);
+    if (params.get('demo') !== 'estimation') return;
+    var mockEstimation = {
+      project_months: 24,
+      total_mm: 528.0,
+      organization: [
+        { role: 'PM', headcount: 1, grade: '고급', notes: '상주' },
+        { role: '응용SW 개발자', headcount: 15, grade: '중급', notes: '' },
+        { role: 'UI/UX 디자이너', headcount: 1, grade: '중급', notes: '' },
+        { role: 'IT 지원기술자', headcount: 5, grade: '초급', notes: '' }
+      ],
+      man_months: [
+        { role: 'PM', headcount: 1, months: 24, total_mm: 24.0, grade: '고급' },
+        { role: '응용SW 개발자', headcount: 15, months: 24, total_mm: 360.0, grade: '중급' },
+        { role: 'UI/UX 디자이너', headcount: 1, months: 24, total_mm: 24.0, grade: '중급' },
+        { role: 'IT 지원기술자', headcount: 5, months: 24, total_mm: 120.0, grade: '초급' }
+      ],
+      wbs: [
+        { name: '분석/설계', activities: ['요구사항 분석', '아키텍처 설계', 'DB 설계'],
+          deliverables: ['요구사항 정의서', '시스템 설계서', 'DB 설계서'],
+          duration_weeks: 24, week_start: 1, week_end: 24 },
+        { name: '구축/개발', activities: ['응용 SW 개발', '인프라 구축', '연계 개발'],
+          deliverables: ['소스코드', '시스템 매뉴얼', '연계 명세서'],
+          duration_weeks: 43, week_start: 25, week_end: 67 },
+        { name: '테스트', activities: ['단위/통합 테스트', '성능 테스트', '보안 점검'],
+          deliverables: ['테스트 계획서', '테스트 결과서'],
+          duration_weeks: 14, week_start: 68, week_end: 81 },
+        { name: '이행/안정화', activities: ['데이터 이관', '교육', '안정화 운영'],
+          deliverables: ['이행 계획서', '교육 자료', '운영 매뉴얼'],
+          duration_weeks: 15, week_start: 82, week_end: 96 }
+      ],
+      notes: '[데모] KIAT 정보시스템 운영·유지보수 사업 기준 — 기간 24개월, 직무 4종, 총 528.0 M/M'
+    };
+    setTimeout(function () { renderEstimationCard(mockEstimation); }, 100);
+  }
+  checkDemoMode();
+
+  /* ── v2 다운로드 버튼 핸들러 ── */
+  function setupV2DownloadButtons() {
+    var btnConfig = [
+      ['v2-excel-btn',    'excel'],
+      ['v2-markdown-btn', 'markdown'],
+      ['v2-json-btn',     'json']
+    ];
+    btnConfig.forEach(function (cfg) {
+      var btn = document.getElementById(cfg[0]);
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        if (!window.ApiClient || !window.ApiClient.downloadV2) {
+          alert('v2 다운로드를 사용할 수 없습니다.');
+          return;
+        }
+        btn.disabled = true;
+        window.ApiClient.downloadV2(cfg[1])
+          .catch(function (err) {
+            alert('다운로드 실패: ' + (err && err.message ? err.message : err));
+          })
+          .then(function () {
+            btn.disabled = false;
+          });
+      });
+    });
+  }
+  setupV2DownloadButtons();
 
   /* ── 진행률 애니메이션 (서버 응답 대기 중) ── */
   function startProgressAnimation() {

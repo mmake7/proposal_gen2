@@ -36,14 +36,27 @@ from services.content_generator import (
     ContentGenerator, get_generated_content, ContentGeneratorError,
 )
 from services.pptx_filler import fill_template, PptxFillerError
+from services_v2.documents import ingest_bytes as v2_ingest_bytes
+from services_v2.orchestrator import (
+    analyze_rfp_document, OrchestratorError,
+)
+from services_v2.results.exporters import (
+    to_excel as v2_to_excel, to_markdown as v2_to_markdown,
+)
+from services_v2.results.rfp_analysis import RfpAnalysisResult
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_APP_DIR, '.env'))
+load_dotenv(os.path.join(_APP_DIR, '.env.local'), override=True)  # .env.local이 우선
 
 logger = logging.getLogger(__name__)
 
 # ── 최근 분석 결과 캐시 (단일 사용자용) ─────────────────────
 _last_analysis: dict | None = None
 _rfp_full_text: str | None = None
+# v2 객체 (Export 라우트에서 재사용)
+_last_v2_result: RfpAnalysisResult | None = None
+_last_v2_filename: str = ''
 
 # ── App Factory ──────────────────────────────────────────────
 def create_app():
@@ -164,6 +177,8 @@ def register_routes(app):
         4. RfpAnalyzer(Claude API)로 AI 분석
         5. 구조화된 JSON 응답 반환
         """
+        global _last_analysis, _rfp_full_text, _last_v2_result, _last_v2_filename
+
         # ── 파일 유효성 검사 ──────────────────────────────────
         if 'file' not in request.files:
             return jsonify({'error': '파일이 전송되지 않았습니다.'}), 400
@@ -173,15 +188,45 @@ def register_routes(app):
         if file.filename == '':
             return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
 
-        if not file.filename.lower().endswith('.pdf'):
-            return jsonify({'error': 'PDF 파일만 업로드할 수 있습니다.'}), 415
+        ext = file.filename.lower().rsplit('.', 1)[-1]
+        if ext not in ('pdf', 'hwpx', 'docx'):
+            return jsonify({
+                'error': 'PDF, HWPX 또는 DOCX 파일만 업로드할 수 있습니다. '
+                         '(.hwp/.doc는 변환 후 업로드)',
+            }), 415
 
-        # ── PDF 텍스트 추출 ──────────────────────────────────
+        file_bytes = file.read()
+
+        # ── v2 엔진 분기 (?engine=v2) ────────────────────────
+        # HWPX/DOCX는 v1이 지원하지 않으므로 자동으로 v2 사용
+        engine = request.args.get('engine', 'v1').lower()
+        if ext in ('hwpx', 'docx'):
+            engine = 'v2'
+
+        if engine == 'v2':
+            try:
+                doc = v2_ingest_bytes(file_bytes, filename=file.filename)
+                result_obj = analyze_rfp_document(doc)
+            except OrchestratorError as exc:
+                logger.warning('v2 파이프라인 실패: %s', exc)
+                return jsonify({'error': f'v2 분석 실패: {exc}'}), 422
+
+            result_dict = result_obj.to_dict()
+            _last_analysis = result_dict
+            _last_v2_result = result_obj
+            _last_v2_filename = file.filename
+            _rfp_full_text = doc.full_text  # v2도 full_text 보존 (content_generator용)
+
+            if result_dict.get('toc'):
+                set_current_toc(result_dict['toc'])
+
+            return jsonify(result_dict)
+
+        # ── v1 (기본): PDF 텍스트 추출 ───────────────────────
         try:
-            file_bytes = file.read()
             extractor = PdfExtractor(enable_ocr=True)
             extraction = extractor.extract_from_bytes(
-                file_bytes, filename=file.filename
+                file_bytes, filename=file.filename,
             )
         except PdfExtractionError as exc:
             logger.warning('PDF 추출 실패: %s', exc)
@@ -242,7 +287,6 @@ def register_routes(app):
                 }), 422
 
         # 최근 분석 결과 저장 (Excel 다운로드용)
-        global _last_analysis, _rfp_full_text
         _last_analysis = result_dict
         _rfp_full_text = extraction.full_text
 
@@ -611,6 +655,68 @@ def register_routes(app):
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
             download_name=filename,
+        )
+
+    # ── v2 결과 Export ────────────────────────────────────
+    def _v2_safe_name(suffix: str) -> str:
+        """다운로드 파일명 — v2 결과의 사업명 또는 원본 파일명 기반."""
+        if _last_v2_result and _last_v2_result.overview \
+                and _last_v2_result.overview.project_name:
+            base = _last_v2_result.overview.project_name
+        elif _last_v2_filename:
+            base = os.path.splitext(_last_v2_filename)[0]
+        else:
+            base = 'rfp_analysis'
+        return f'{base}_v2{suffix}'
+
+    @app.route('/api/v2/export/excel', methods=['GET'])
+    def api_v2_export_excel():
+        """마지막 v2 분석 결과 → Excel 다운로드 (7시트)."""
+        if _last_v2_result is None:
+            return jsonify({
+                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+            }), 404
+        try:
+            buf = v2_to_excel(_last_v2_result)
+        except Exception as exc:
+            logger.error('v2 Excel 생성 실패: %s', exc)
+            return jsonify({'error': f'Excel 생성 실패: {exc}'}), 500
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=_v2_safe_name('.xlsx'),
+        )
+
+    @app.route('/api/v2/export/markdown', methods=['GET'])
+    def api_v2_export_markdown():
+        """마지막 v2 분석 결과 → 마크다운 보고서 다운로드."""
+        if _last_v2_result is None:
+            return jsonify({
+                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+            }), 404
+        md = v2_to_markdown(_last_v2_result, filename=_last_v2_filename)
+        return send_file(
+            io.BytesIO(md.encode('utf-8')),
+            mimetype='text/markdown; charset=utf-8',
+            as_attachment=True,
+            download_name=_v2_safe_name('.md'),
+        )
+
+    @app.route('/api/v2/export/json', methods=['GET'])
+    def api_v2_export_json():
+        """마지막 v2 분석 결과 → 전체 JSON 다운로드."""
+        if _last_v2_result is None:
+            return jsonify({
+                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+            }), 404
+        import json as _json
+        body = _json.dumps(_last_v2_result.to_dict(), ensure_ascii=False, indent=2)
+        return send_file(
+            io.BytesIO(body.encode('utf-8')),
+            mimetype='application/json; charset=utf-8',
+            as_attachment=True,
+            download_name=_v2_safe_name('.json'),
         )
 
 

@@ -3,6 +3,213 @@
 이 파일은 AI 에이전트들의 작업 기록입니다. 새로운 에이전트는 작업 전 이 파일을 참고하세요.
 
 ---
+## 2026-05-24 (저녁) - 영업 견적 화면 (WBS / 조직도 / M/M) 🤖
+
+**작업:** RFP 분석 결과에서 영업 견적 정보(WBS·조직도·Man-Month) 자동 추출 + UI 화면
+**상태:** ✅ 결정적 휴리스틱으로 KIAT 견적 정확 산정, 화면 검증 완료
+
+### 새로 만든 것
+1. **데이터 모델** (`services_v2/results/rfp_analysis.py`)
+   - `EstimationResult { wbs, organization, man_months, project_months, total_mm, notes }`
+   - `WbsPhase`, `OrgRole`, `ManMonthLine`
+
+2. **결정적 견적 추출** (`services_v2/estimation/heuristic.py`, LLM 없이)
+   - `parse_project_months()` — overview.period 파싱 (개월/일/날짜범위)
+   - `extract_org_from_requirements()` — `"PM 1명"`, `"개발자 15명"` 패턴 정규식 + 직무명 normalize
+   - `build_wbs_from_toc()` — 표준 SI 4단계(분석설계 25% / 구축 45% / 테스트 15% / 이행 15%) 매핑
+
+3. **파이프라인 통합**
+   - Orchestrator: 분석 끝에 자동 견적 산정 (비용 0)
+   - Excel: WBS / 조직도 / M_M_산정 3시트 추가 (7→10시트)
+   - Markdown: 💼 영업 견적 요약 섹션
+
+4. **UI 견적 카드** (`templates/index.html`, `static/js/upload.js`, `static/css/layout.css`)
+   - 헤더 총계 카드 (사업기간 / 총 인원 / 총 M/M 강조)
+   - 조직도 표 + M/M 표 (좌우 그리드)
+   - WBS 타임라인 (인디고 left border + 활동/산출물)
+   - `?demo=estimation` URL로 mock 자동 렌더 (분석 없이 화면 검증)
+
+### KIAT 견적 검증 (LLM 0)
+- 사업기간 24개월, 조직도 4종 22명, 총 528.0 M/M
+- WBS 4단계 96주
+- 모두 RFP MHR-001 텍스트에서 결정적 추출
+
+### 테스트
+- 신규 20개 (`test_v2_estimation.py`)
+- 전체 **275 pass / 1 pre-existing**, 회귀 0
+
+### 다음 라운드 후보 (실 RFP 기반)
+- 조직도/M/M 화면 직접 편집·저장 (영업 운용)
+- 단가 × M/M 금액 산정 + 단가표 등록
+- LLM EstimationAgent (한도 회복 후) — narrative 기반 더 풍부한 추정
+- 추가 RFP 양식에서 인력 패턴 발굴
+
+---
+## 2026-05-24 (오후) - 양식 확장 + Flask UI 통합 + 자기학습 🤖
+
+**작업:** Flask UI v2 통합 + Classifier 메모리 학습 + .hwp/.doc 자동 변환 + ISP 양식 fix
+**상태:** ✅ 8 RFP 양식 모두 정상 처리, UI 브라우저 검증 완료
+
+### 새로 만든 것
+
+1. **Flask v2 Export 라우트 3종** (`app.py`)
+   - `GET /api/v2/export/{excel,markdown,json}` — 마지막 v2 결과 다운로드
+   - `_last_v2_result` 객체 캐시
+   - 단위 테스트 8개 (`test_v2_export_routes.py`)
+
+2. **프론트엔드 v2 통합** (`templates/index.html`, `static/js/{client,upload}.js`, `static/css/layout.css`)
+   - 엔진 토글 카드 (v2 기본 권장 + v1 옵션)
+   - v2 분석 후 Excel/MD/JSON 다운로드 버튼 그룹 자동 노출
+   - `.hwpx`, `.docx` accept 추가
+   - chrome-devtools로 UI 실측 검증 완료 (콘솔 에러 0)
+
+3. **레거시 포맷 자동 변환** (`scripts/convert_legacy.py`)
+   - 한컴 COM (`.hwp → .hwpx`) + Word COM (`.doc → .docx`)
+   - sample/ 5건 모두 변환 성공
+
+4. **`.docx` 네이티브 ingest** (`services_v2/documents/docx_ingest.py`)
+   - OOXML zip+xml 직접 파싱 (stdlib only)
+   - HWPX와 같은 RfpDocument 인터페이스
+
+5. **Classifier 메모리 학습** (`services_v2/results/fingerprints.py`)
+   - 분석 결과 → fingerprint 추출 → `analyses/_fingerprints.json` 누적
+   - 다음 Classifier 호출 시 hint로 자동 동봉
+   - `scripts/seed_fingerprints.py`로 기존 분석 결과 시드
+   - **자동 학습 효과 확인**: 전자인장(0.55) 누적 후 같은 양식 투자자예탁금(0.92)
+
+6. **표 파서 양식 확장 4종**
+   - Multi-pair 세로형 (전자인장): `[필드1, 값1, 필드2, 값2]` 한 행
+   - ID-free 가로형 (아이부자): ID 없는 `[구분, 요건상세]` 양식
+   - ISP 양식 sub-field: `[메인필드, 서브필드, 값]` 3열 (definition/detail 분리)
+   - Category ID prefix 자동 매핑 (단독 ID 헤더 양식 보강)
+
+### 8 RFP 분석 결과 (LLM E2E)
+| RFP | Confidence | 요구사항 | 비고 |
+|---|---|---|---|
+| 청원24 (행안부) | 0.92 | 55 | 어제 |
+| 한국유학 | 0.88 | 33 | 어제 |
+| KIAT | 0.78 | 32 | 어제 |
+| 전자인장 (한국증권금융) | 0.55 | 35 | over-recall, 후속 분석에 학습 |
+| 투자자예탁금 | **0.92** | 23 | **fingerprint 학습 효과** |
+| 아이부자 (.doc→docx, 하나은행) | 0.55 | 27 | scoring 0건 (RFP에 없음) |
+| ISP수립 (문화재청) | 0.72 | 42 | ISP fix 후 detail 정확 |
+| ISP-BPR | 0.50 | 23 | validator 단계서 API 한도 도달 |
+
+### 🚨 API 한도 도달
+2026-06-01 UTC까지 LLM 호출 불가. 그 동안은 결정적 작업만 가능.
+
+### 테스트
+- v2 단위 테스트 누적 **170개**:
+  - table_parser 54 (multi-pair 2 + ID-free 3 + ISP 2 신규)
+  - coordinator 10, scoring_detector 10, validator 10
+  - hwpx_ingest 12, exporters 15, storage 19, fingerprints 14
+  - export_routes 8
+- 전체 suite **255 pass / 1 pre-existing fail**, 회귀 0
+
+### sample_outputs/ 산출물
+- cheongwon24.{xlsx,md,json} (54건 100점)
+- jeonja.md, tujajayetakgeum.md, isp_planning.md, isp_bpr.md, aibuja.md
+- ui_engine_toggle.png (UI 검증 스크린샷)
+
+### 보류 (사용자 결정 또는 API 한도 회복 대기)
+- 2번 전자인장 over-recall 개선 — LLM 검증 필요
+- 추가 RFP 양식 발굴 (사용자 다양한 PDF/HWPX 추가)
+- PPTX 출력 통합 (v2 → 제안서 자동 생성)
+
+---
+## 2026-05-24 - 다양한 RFP 결과물 강화 (Claude Opus 4.7) 🤖
+
+**작업:** "다양한 RFP를 분석해서 결과물을 받고 싶다" 방향에 맞춰 출력 다양화 + 적응성 강화
+**상태:** ✅ 결과물 출력 다양화 완료, PDF 검증은 사용자 실 PDF 필요
+
+### 무엇을 만들었나
+1. **`services_v2/results/exporters.py`** — v2 결과 → Excel (7시트) + Markdown
+   - Excel: 사업개요/요구사항/배점/목차 (v1 호환) + 분석메타/검증결과/에이전트로그 (v2 신규)
+   - Markdown: 검증 배지(🟢🟡🔴) + 사업개요 카드 + 카테고리별 요구사항 표 + TOC 트리 + 에이전트 메트릭
+
+2. **`services_v2/results/storage.py`** — 분석 결과 누적 저장
+   - `save_result()` — `analyses/{timestamp}_{name}.json` (meta + 전체 결과)
+   - `summarize_gallery()` — 누적 통계 (org_type/req_format 분포, 평균 신뢰도, 저신뢰 파일)
+   - `V2_AUTO_SAVE=1` 환경변수로 orchestrator 자동 저장
+
+3. **새 양식 자동 적응 강화** (`narrative_parser.py` + `coordinator.py`)
+   - 표 파서 추출 결과(샘플 5건)를 narrative parser에 동봉 → 같은 양식으로 추가 요구사항 추출
+   - Classifier 메타(org_type/req_id_scheme/req_format/language_dialect/notes) 전체 전달
+   - `requirement_narrative.md` 프롬프트에 메타 활용 지시 추가
+
+4. **`scripts/smoke_v2.py` 확장** — argparse로 옵션화
+   - `--excel`, `--markdown`, `--json` 옵션으로 결과물 직접 출력
+   - `--quiet`로 콘솔 출력 최소화
+
+5. **`scripts/validate_samples.py` 갤러리 통계** — analyses/ 누적 분석 요약 추가
+
+### 테스트
+- 신규 단위 테스트 **34개**:
+  - `test_v2_exporters.py` (15) — Excel 7시트 + Markdown 배지/카테고리 그룹/TOC 트리
+  - `test_v2_storage.py` (19) — save/list/load/summarize + auto_save 환경변수
+- 전체 suite **226 pass / 1 pre-existing fail**, 회귀 0
+
+### 보류 (사용자 실 데이터 필요)
+- **#23 PDF RFP 양식 검증** — `test_rfp.pdf`는 토이(175자). 실 공공 PDF RFP가 필요.
+  - 인프라(PdfExtractor + pdfplumber)는 이미 갖춰져 있어 sample/에 PDF 추가 시 즉시 작동 예상.
+
+### 사용법 예시
+```bash
+# 분석 + Excel/Markdown 저장
+python scripts/smoke_v2.py "sample/myRFP.hwpx" \
+    --excel out.xlsx --markdown out.md --quiet
+
+# 결정적 검증 + 누적 갤러리 요약 (LLM 0)
+python scripts/validate_samples.py
+
+# 자동 저장 모드로 분석 (분석들이 analyses/에 누적)
+V2_AUTO_SAVE=1 python scripts/smoke_v2.py "sample/x.hwpx"
+```
+
+---
+## 2026-05-23 - v2 멀티에이전트 파이프라인 (Claude Opus 4.7) 🤖
+
+**작업:** ProposalPro 재시작 — RFP 다양성 대응을 위한 v2 멀티에이전트 재설계
+**상태:** ✅ 3 RFP 실 검증 완료
+
+### 무엇을 만들었나
+- **services_v2/** 패키지 — v1과 병행 (services/는 그대로). `?engine=v2` 플래그로 활성.
+- 5-Stage 파이프라인: Ingest → Classify → Specialists(병렬) → Validate(+재시도) → Synthesize
+- 에이전트 6종: classifier / overview / requirements coordinator / scoring / toc / validator
+- 모든 에이전트 Opus 4.7. 프롬프트는 `services_v2/prompts/*.md` 분리.
+- HWPX 네이티브 파싱 — stdlib only (zipfile + xml.etree). PDF/HWPX 확장자 자동 분기.
+
+### 핵심 발견 (메모리 `rfp_table_formats.md` 참조)
+1. **표 양식 3종 공존**: 세로형(KIAT) / 가로형 인덱스(청원24) / 단독 ID 헤더(한국유학종합)
+2. **카테고리 코드는 패턴 매칭**: 표준 SFR/PER/... + 비표준 MAR/MHR/OMR/TSR 모두 `[A-Z]{2,3}-\d{2,3}` 패턴으로
+3. **평가표 위치 양식별로 다름**: 헤더 키워드(평가항목/배점/평가부문) + 정수 셀로 결정적 검출 → LLM에 강제 전달
+4. **TOC chapter 헤더가 표인 경우**(한국유학): 1행 표 `[Ⅰ, '', 용역개요]` → 본문에 `[Chapter Ⅰ 용역개요]` 인라인 마커 삽입
+
+### 3 RFP 최종 결과 (실 RFP, Opus 4.7)
+| | KIAT | 청원24 | 한국유학종합 |
+|---|---|---|---|
+| Confidence | 0.78 | **0.92** | **0.88** |
+| Requirements | 32건 | 55건 | 33건 (모두 category 채움) |
+| Scoring | 21건 99점 | **21건 100점** | **27건 100점** |
+| TOC | 6 L1 (평가표 챕터) | 5 L1 | 7 L1 (실 챕터) |
+| 소요시간 | 76초 | ~85초 | ~76초 |
+
+### 테스트
+- v2 단위 테스트 **89개** (table_parser 47 + coordinator 10 + scoring detector 10 + validator 10 + hwpx ingest 12)
+- 전체 suite **192 pass / 1 pre-existing fail** (test_missing_api_key_raises 기존 실패)
+- 회귀 0
+
+### 알려진 작은 이슈 (다음 라운드 후보)
+- KIAT: PMR-007 누락 (실 RFP에 없을 가능성, 양식 의존)
+- v1 services/rfp_analyzer.py + content_generator.py에 `claude-3-opus-20240229` (retired) 모델 ID — 사용자가 의도치 않게 다운그레이드, 복구 또는 v1 폐기 결정 필요
+- KIAT TOC: 평가표 챕터로 잡힘 (RFP 명시 목차 Ⅰ.사업개요~Ⅸ.별표가 아닌 평가표 챕터). 둘 다 의미 있음 — 합칠지 결정 필요
+
+### 미수정 — 사용자 결정 필요한 항목
+- 비용 최적화 (Sonnet 4.6 분배 vs 전부 Opus 4.7 유지)
+- UI/Flask 통합 (v2 결과를 기존 프론트엔드에서 표시, PPTX 출력까지 E2E)
+- 다른 양식 (PDF, 도서관 시스템, 교육부 등) 추가 검증
+
+---
 ## 2026-03-01 17:26:51 - 웹디자인 마스터 에이전트 🤖
 
 **티켓:** 5. 전체 디자인 통합 검수 및 일관성 확인

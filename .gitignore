@@ -77,6 +77,14 @@ logs/
 # ===========================
 output/
 exports/
+analyses/
+sample_outputs/
+
+# RFP sample 데이터 (민감 가능성)
+sample/
+
+# 에디터 임시 파일
+*.tmp.*
 
 # ===========================
 # Claude Code

@@ -57,7 +57,7 @@ class ContentGenerator:
         self,
         *,
         api_key: str | None = None,
-        model: str = 'claude-sonnet-4-20250514',
+        model: str = 'claude-opus-4-7',
         max_tokens: int = 4096,
     ):
         self._api_key = api_key or os.environ.get('ANTHROPIC_API_KEY', '')

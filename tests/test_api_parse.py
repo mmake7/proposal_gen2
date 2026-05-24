@@ -35,12 +35,17 @@ class TestFileValidation:
         assert resp.status_code == 400
         assert '선택되지 않았습니다' in resp.get_json()['error']
 
-    def test_non_pdf_returns_415(self, client):
-        """PDF가 아닌 파일 업로드 시 415 에러"""
-        data = {'file': (io.BytesIO(b'test'), 'document.docx')}
+    def test_non_supported_file_returns_415(self, client):
+        """지원하지 않는 확장자(.txt, .hwp 등) 업로드 시 415 에러.
+
+        v2 통합 후 .pdf/.hwpx/.docx 모두 허용. .hwp/.doc는 변환 후 사용.
+        """
+        data = {'file': (io.BytesIO(b'test'), 'document.txt')}
         resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
         assert resp.status_code == 415
-        assert 'PDF' in resp.get_json()['error']
+        # 허용 포맷 또는 변환 안내 포함
+        body = resp.get_json()['error']
+        assert 'PDF' in body or 'HWPX' in body or 'DOCX' in body
 
 
 # ── PDF 추출 에러 테스트 ─────────────────────────────────────

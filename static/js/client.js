@@ -2,8 +2,11 @@
    Flask API Client – RFP 분석 시스템 백엔드 연동
    ============================================================
    API Endpoints:
-     POST /api/parse          – PDF 파일 업로드 및 분석
-     GET  /api/download/excel – 분석 결과 Excel 다운로드
+     POST /api/parse[?engine=v2] – RFP(PDF/HWPX) 업로드 및 분석
+     GET  /api/download/excel    – v1 분석 결과 Excel 다운로드
+     GET  /api/v2/export/excel    – v2 분석 결과 Excel (7시트)
+     GET  /api/v2/export/markdown – v2 마크다운 보고서
+     GET  /api/v2/export/json     – v2 전체 JSON
    ============================================================ */
 (function () {
   'use strict';
@@ -12,7 +15,12 @@
   var API_BASE = '';
   var PARSE_ENDPOINT = '/api/parse';
   var DOWNLOAD_ENDPOINT = '/api/download/excel';
-  var REQUEST_TIMEOUT_MS = 120000; /* 2분 */
+  var V2_EXPORT_ENDPOINTS = {
+    excel:    '/api/v2/export/excel',
+    markdown: '/api/v2/export/markdown',
+    json:     '/api/v2/export/json'
+  };
+  var REQUEST_TIMEOUT_MS = 180000; /* 3분 (v2는 더 오래 걸림) */
 
   /* ── 에러 코드 → 사용자 메시지 매핑 ── */
   var ERROR_MESSAGES = {
@@ -52,6 +60,12 @@
   function getErrorForStatus(status, serverMessage) {
     if (status === 413) return ERROR_MESSAGES.FILE_TOO_LARGE;
     if (status === 415) return ERROR_MESSAGES.UNSUPPORTED_FILE;
+    if (status === 404) {
+      return {
+        title: '데이터 없음',
+        desc: serverMessage || '요청한 데이터를 찾을 수 없습니다.'
+      };
+    }
     if (status === 422) {
       return {
         title: ERROR_MESSAGES.PARSE_FAILED.title,
@@ -97,17 +111,24 @@
        .onError(title, desc)    – 에러 콜백
      @returns {Object} { abort: Function }
      ============================================================ */
-  function parseRfp(file, callbacks) {
+  function parseRfp(file, callbacks, options) {
     var cb = callbacks || {};
+    var opts = options || {};
     var aborted = false;
 
     /* FormData 구성 */
     var formData = new FormData();
     formData.append('file', file);
 
+    /* engine 쿼리 파라미터 — 'v2' 지정 시 v2 파이프라인 사용 */
+    var url = API_BASE + PARSE_ENDPOINT;
+    if (opts.engine === 'v2') {
+      url += '?engine=v2';
+    }
+
     /* XMLHttpRequest로 타임아웃 + abort 지원 */
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', API_BASE + PARSE_ENDPOINT);
+    xhr.open('POST', url);
     xhr.timeout = REQUEST_TIMEOUT_MS;
     xhr.responseType = 'json';
 
@@ -297,10 +318,54 @@
   }
 
   /* ============================================================
+     v2 결과 다운로드 (Excel/Markdown/JSON)
+     서버 측에 마지막 v2 분석 결과가 캐시되어 있어야 함.
+
+     @param {string} type – 'excel' | 'markdown' | 'json'
+     @returns {Promise} – 성공 시 Blob, 실패 시 Error
+     ============================================================ */
+  function downloadV2(type) {
+    var endpoint = V2_EXPORT_ENDPOINTS[type];
+    if (!endpoint) {
+      return Promise.reject(new Error('알 수 없는 다운로드 타입: ' + type));
+    }
+    return fetch(API_BASE + endpoint)
+      .then(function (response) {
+        if (!response.ok) {
+          return response.json().then(function (body) {
+            throw new Error(body.error || ('다운로드 실패 (' + response.status + ')'));
+          }, function () {
+            throw new Error('다운로드 실패 (' + response.status + ')');
+          });
+        }
+        /* 파일명을 Content-Disposition에서 추출 */
+        var disp = response.headers.get('Content-Disposition') || '';
+        var match = disp.match(/filename\*?=(?:UTF-8'')?["']?([^;"']+)["']?/i);
+        var filename = match ? decodeURIComponent(match[1]) : ('rfp_v2.' + type);
+        return response.blob().then(function (blob) {
+          return { blob: blob, filename: filename };
+        });
+      })
+      .then(function (result) {
+        /* 브라우저 다운로드 트리거 */
+        var url = URL.createObjectURL(result.blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        return result;
+      });
+  }
+
+  /* ============================================================
      전역 API 노출
      ============================================================ */
   window.ApiClient = {
     parseRfp:          parseRfp,
+    downloadV2:        downloadV2,
     normalizeResponse: normalizeResponse,
     ERROR_MESSAGES:    ERROR_MESSAGES
   };

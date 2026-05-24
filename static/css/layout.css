@@ -651,8 +651,269 @@
 /* ── Upload Actions ── */
 .upload-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--krds-spacing-4);
   margin-top: var(--krds-spacing-6);
+  flex-wrap: wrap;
+}
+
+/* ── Engine Toggle (v1/v2 선택) ── */
+.engine-toggle {
+  display: flex;
+  gap: var(--krds-spacing-2);
+  border: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-width: 320px;
+}
+.engine-option {
+  flex: 1;
+  display: block;
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid var(--krds-color-border-default, #cbd5e1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  background: #fff;
+}
+.engine-option:has(input:checked) {
+  border-color: var(--krds-color-primary, #6366F1);
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+.engine-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.engine-option-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--krds-color-text-primary, #0f172a);
+  margin-bottom: 0.2rem;
+}
+.engine-option-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6);
+  color: #fff;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+}
+.engine-option-desc {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--krds-color-text-secondary, #475569);
+  line-height: 1.4;
+}
+
+/* ── 영업 견적 카드 ── */
+.estimation-card {
+  padding: 2rem;
+  margin-top: 1.5rem;
+  background: linear-gradient(135deg, #fff 0%, #fafbff 100%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+.estimation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.estimation-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem 0;
+  color: #0f172a;
+}
+.estimation-desc {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0;
+}
+.estimation-totals {
+  display: flex;
+  gap: 0.5rem;
+}
+.estimation-total-item {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  text-align: center;
+  min-width: 96px;
+}
+.estimation-total-highlight {
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  color: #fff;
+  border: none;
+}
+.estimation-total-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin-bottom: 0.15rem;
+  opacity: 0.75;
+}
+.estimation-total-value {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.estimation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 880px) {
+  .estimation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.estimation-section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.2rem;
+}
+.estimation-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #6366F1;
+  margin: 0 0 0.75rem 0;
+}
+.estimation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.estimation-table th,
+.estimation-table td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+}
+.estimation-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.estimation-table td.num,
+.estimation-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.estimation-table td.strong {
+  font-weight: 700;
+  color: #6366F1;
+}
+.estimation-table tfoot th {
+  background: #f1f5f9;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #6366F1;
+}
+.estimation-empty {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  padding: 1rem;
+  text-align: center;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.estimation-wbs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.estimation-wbs-phase {
+  border-left: 3px solid #6366F1;
+  background: #f8fafc;
+  border-radius: 0 10px 10px 0;
+  padding: 0.7rem 1rem;
+}
+.estimation-wbs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.estimation-wbs-name {
+  font-weight: 600;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+.estimation-wbs-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+.estimation-wbs-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  font-size: 0.82rem;
+}
+.estimation-wbs-body h5 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.3rem 0;
+}
+.estimation-wbs-body ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  color: #475569;
+}
+.estimation-wbs-body li {
+  padding: 0.15rem 0;
+}
+.estimation-wbs-body li::before {
+  content: '· ';
+  color: #6366F1;
+  font-weight: 700;
+}
+.estimation-notes {
+  margin-top: 1rem;
+  padding: 0.6rem 0.9rem;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  font-size: 0.8rem;
+  color: #475569;
+  font-style: italic;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── v2 다운로드 버튼 그룹 ── */
+.v2-download-group {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.3rem 0.5rem;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px dashed rgba(99, 102, 241, 0.25);
+}
+.v2-download-group .btn {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
 }
 
 /* ============================================================
