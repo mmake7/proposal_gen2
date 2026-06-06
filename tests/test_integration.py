@@ -120,7 +120,7 @@ class TestApiEndToEnd:
 
         pdf_data = create_rfp_like_pdf()
         data = {'file': (io.BytesIO(pdf_data), 'rfp_sample.pdf')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
 
         assert resp.status_code == 200
         body = resp.get_json()
@@ -159,7 +159,7 @@ class TestApiEndToEnd:
         # 1단계: PDF 업로드 및 분석
         pdf_data = create_rfp_like_pdf()
         data = {'file': (io.BytesIO(pdf_data), 'test_rfp.pdf')}
-        parse_resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        parse_resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert parse_resp.status_code == 200
 
         # 2단계: Excel 다운로드
@@ -186,7 +186,7 @@ class TestApiEndToEnd:
         """텍스트가 없는 PDF 업로드 시 422 에러를 반환한다"""
         pdf_data = create_empty_pdf(1)
         data = {'file': (io.BytesIO(pdf_data), 'empty.pdf')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
 
         assert resp.status_code == 422
         body = resp.get_json()

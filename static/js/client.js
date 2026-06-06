@@ -41,8 +41,8 @@
       desc: '서버 응답을 처리할 수 없습니다. 관리자에게 문의해주세요.'
     },
     PARSE_FAILED: {
-      title: 'PDF 분석 실패',
-      desc: 'PDF 파일을 분석할 수 없습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.'
+      title: '문서 분석 실패',
+      desc: '문서를 분석할 수 없습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.'
     },
     FILE_TOO_LARGE: {
       title: '파일 크기 초과',
@@ -50,7 +50,7 @@
     },
     UNSUPPORTED_FILE: {
       title: '지원되지 않는 파일 형식',
-      desc: 'PDF 파일만 업로드할 수 있습니다.'
+      desc: 'PDF·HWPX·DOCX 파일만 업로드할 수 있습니다.'
     }
   };
 
@@ -122,8 +122,9 @@
 
     /* engine 쿼리 파라미터 — 'v2' 지정 시 v2 파이프라인 사용 */
     var url = API_BASE + PARSE_ENDPOINT;
-    if (opts.engine === 'v2') {
-      url += '?engine=v2';
+    /* engine 명시 전송 — 서버 기본값(v2)에 의존하지 않고 선택값을 그대로 전달 */
+    if (opts.engine) {
+      url += '?engine=' + encodeURIComponent(opts.engine);
     }
 
     /* XMLHttpRequest로 타임아웃 + abort 지원 */

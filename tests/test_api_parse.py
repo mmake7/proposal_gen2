@@ -23,7 +23,7 @@ def _make_pdf_file(content=b'%PDF-1.4 fake', filename='test.pdf'):
 class TestFileValidation:
     def test_no_file_returns_400(self, client):
         """파일 없이 요청 시 400 에러"""
-        resp = client.post('/api/parse')
+        resp = client.post('/api/parse?engine=v1')
         assert resp.status_code == 400
         data = resp.get_json()
         assert '전송되지 않았습니다' in data['error']
@@ -31,7 +31,7 @@ class TestFileValidation:
     def test_empty_filename_returns_400(self, client):
         """빈 파일명으로 요청 시 400 에러"""
         data = {'file': (io.BytesIO(b'test'), '')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 400
         assert '선택되지 않았습니다' in resp.get_json()['error']
 
@@ -41,7 +41,7 @@ class TestFileValidation:
         v2 통합 후 .pdf/.hwpx/.docx 모두 허용. .hwp/.doc는 변환 후 사용.
         """
         data = {'file': (io.BytesIO(b'test'), 'document.txt')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 415
         # 허용 포맷 또는 변환 안내 포함
         body = resp.get_json()['error']
@@ -58,7 +58,7 @@ class TestPdfExtractionErrors:
         instance.extract_from_bytes.side_effect = PdfExtractionError('파일 손상')
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 422
         assert '처리할 수 없습니다' in resp.get_json()['error']
 
@@ -74,7 +74,7 @@ class TestPdfExtractionErrors:
         )
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 422
         assert '추출할 수 없습니다' in resp.get_json()['error']
 
@@ -104,7 +104,7 @@ class TestAnalysisErrors:
         }
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 200
 
     @patch('app.RfpAnalyzer')
@@ -126,7 +126,7 @@ class TestAnalysisErrors:
         MockParser.side_effect = Exception('파서 실패')
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 422
         assert '모두 실패' in resp.get_json()['error']
 
@@ -161,7 +161,7 @@ class TestSuccessResponse:
         )
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 200
 
         body = resp.get_json()
@@ -209,7 +209,7 @@ class TestSuccessResponse:
         )
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 200
 
         # _last_analysis가 설정되었는지 확인
@@ -244,7 +244,7 @@ class TestSuccessResponse:
         )
 
         data = {'file': _make_pdf_file()}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 200
 
         body = resp.get_json()
@@ -265,21 +265,62 @@ class TestFileExtensionVariants:
         """대문자 .PDF 확장자도 허용된다"""
         # 실제 PDF 파싱에서 에러가 발생할 수 있지만, 확장자 검증은 통과해야 함
         data = {'file': (io.BytesIO(b'%PDF-1.4 fake'), 'document.PDF')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         # 415가 아닌 다른 상태코드 (확장자 통과, 파싱에서 실패 가능)
         assert resp.status_code != 415
 
     def test_mixed_case_pdf_accepted(self, client):
         """혼합 대소문자 .Pdf 확장자도 허용된다"""
         data = {'file': (io.BytesIO(b'%PDF-1.4 fake'), 'document.Pdf')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code != 415
 
     def test_txt_extension_rejected(self, client):
         """.txt 확장자는 거부된다"""
         data = {'file': (io.BytesIO(b'some text'), 'document.txt')}
-        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
         assert resp.status_code == 415
+
+
+# ── 엔진 분기 (기본 v2) 테스트 ──────────────────────────────
+
+class TestEngineDefault:
+    """/api/parse 기본 엔진 라우팅 (v2 정본) 검증."""
+
+    @patch('app.analyze_rfp_document')
+    @patch('app.v2_ingest_bytes')
+    def test_default_engine_is_v2(self, MockIngest, MockAnalyze, client):
+        """engine 미지정 시 v2 멀티에이전트 경로로 라우팅된다."""
+        doc = MagicMock()
+        doc.full_text = 'RFP 본문'
+        MockIngest.return_value = doc
+
+        result_obj = MagicMock()
+        result_obj.to_dict.return_value = {
+            'overview': {'project_name': 'v2 기본 테스트'},
+            'requirements': [], 'scoring': [], 'toc': [],
+        }
+        MockAnalyze.return_value = result_obj
+
+        data = {'file': _make_pdf_file(filename='rfp.pdf')}
+        resp = client.post('/api/parse', data=data, content_type='multipart/form-data')
+
+        assert resp.status_code == 200
+        MockIngest.assert_called_once()
+        MockAnalyze.assert_called_once()
+        assert resp.get_json()['overview']['project_name'] == 'v2 기본 테스트'
+
+    @patch('app.PdfExtractor')
+    def test_explicit_v1_uses_legacy_path(self, MockExtractor, client):
+        """?engine=v1 명시 시 레거시 PdfExtractor 경로를 사용한다."""
+        instance = MockExtractor.return_value
+        instance.extract_from_bytes.side_effect = PdfExtractionError('forced')
+
+        data = {'file': _make_pdf_file()}
+        resp = client.post('/api/parse?engine=v1', data=data, content_type='multipart/form-data')
+
+        MockExtractor.assert_called()  # v1 경로 진입
+        assert resp.status_code == 422
 
 
 # ── 에러 핸들러 테스트 ────────────────────────────────────
@@ -295,5 +336,5 @@ class TestErrorHandlers:
 
     def test_method_not_allowed_parse(self, client):
         """GET /api/parse 요청 시 405 에러"""
-        resp = client.get('/api/parse')
+        resp = client.get('/api/parse?engine=v1')
         assert resp.status_code == 405

@@ -36,10 +36,15 @@ def client(flask_app):
 
 @pytest.fixture(autouse=True)
 def reset_analysis_cache():
-    """각 테스트 전후로 분석 결과 캐시 초기화"""
-    app_module._last_analysis = None
+    """각 테스트 전후로 분석 결과/세션 전역 캐시 초기화 (테스트 격리)"""
+    def _reset():
+        app_module._last_analysis = None
+        app_module._rfp_full_text = None
+        app_module._last_v2_result = None
+        app_module._last_v2_filename = ''
+    _reset()
     yield
-    app_module._last_analysis = None
+    _reset()
 
 
 # ── 샘플 PDF 생성 헬퍼 ─────────────────────────────────────

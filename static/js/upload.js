@@ -27,8 +27,9 @@
 
   /* ── 설정 ── */
   var MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-  var ALLOWED_EXTENSIONS = ['.pdf'];
-  var ALLOWED_MIME = 'application/pdf';
+  var ALLOWED_EXTENSIONS = ['.pdf', '.hwpx', '.docx'];
+  /* MIME은 PDF만 신뢰 가능(hwpx/docx는 브라우저별 상이) — 검증은 확장자 기준 */
+  var ALLOWED_PDF_MIME = 'application/pdf';
   var MESSAGE_AUTO_DISMISS_MS = 6000;
 
   var messageDismissTimer = null;
@@ -100,12 +101,12 @@
         valid: false,
         code: 'INVALID_TYPE',
         title: '허용되지 않는 파일 형식입니다',
-        desc: '"' + ext + '" 파일은 업로드할 수 없습니다. PDF(.pdf) 파일만 허용됩니다.'
+        desc: '"' + ext + '" 파일은 업로드할 수 없습니다. PDF(.pdf)·HWPX(.hwpx)·DOCX(.docx) 파일만 허용됩니다. (.hwp/.doc는 변환 후 업로드)'
       };
     }
 
-    /* 2) MIME 타입 검사 (브라우저가 제공하는 경우) */
-    if (file.type && file.type !== ALLOWED_MIME) {
+    /* 2) MIME 검사 — PDF만 신뢰 가능 (hwpx/docx는 브라우저별 MIME 상이) */
+    if (ext === '.pdf' && file.type && file.type !== ALLOWED_PDF_MIME) {
       return {
         valid: false,
         code: 'INVALID_MIME',

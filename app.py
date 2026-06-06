@@ -176,13 +176,11 @@ def register_routes(app):
 
     @app.route('/api/parse', methods=['POST'])
     def api_parse():
-        """RFP PDF 업로드 및 분석
+        """RFP 문서(PDF/HWPX/DOCX) 업로드 및 분석.
 
-        1. multipart/form-data로 PDF 파일 수신
-        2. 유효성 검사 (존재, 파일명, 확장자)
-        3. PdfExtractor로 텍스트 추출
-        4. RfpAnalyzer(Claude API)로 AI 분석
-        5. 구조화된 JSON 응답 반환
+        - ?engine=v2 (기본): services_v2 멀티에이전트 파이프라인.
+        - ?engine=v1: 레거시 단일 LLM 경로(PDF 전용, 폴백용).
+        - HWPX/DOCX는 v1 미지원이라 항상 v2로 처리된다.
         """
         global _last_analysis, _rfp_full_text, _last_v2_result, _last_v2_filename
 
@@ -204,9 +202,9 @@ def register_routes(app):
 
         file_bytes = file.read()
 
-        # ── v2 엔진 분기 (?engine=v2) ────────────────────────
-        # HWPX/DOCX는 v1이 지원하지 않으므로 자동으로 v2 사용
-        engine = request.args.get('engine', 'v1').lower()
+        # ── 엔진 분기 — 기본값 v2(정본). v1은 명시 요청 시 폴백 ──
+        # HWPX/DOCX는 v1이 지원하지 않으므로 항상 v2 사용
+        engine = request.args.get('engine', 'v2').lower()
         if ext in ('hwpx', 'docx'):
             engine = 'v2'
 
