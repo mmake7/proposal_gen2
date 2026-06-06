@@ -13,6 +13,8 @@ RFP 요구사항 테이블 파싱 모듈
     result = parse_rfp_requirements("path/to/rfp.pdf")
 """
 
+from __future__ import annotations
+
 import re
 import logging
 from dataclasses import dataclass, field, asdict

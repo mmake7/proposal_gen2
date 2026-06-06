@@ -25,11 +25,12 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY app.py config.py ./
 COPY services/ services/
+COPY services_v2/ services_v2/
 COPY templates/ templates/
 COPY static/ static/
 
-# Create tmp directory for file processing
-RUN mkdir -p /app/tmp && chown -R appuser:appuser /app
+# Create tmp + runtime data directories for file processing
+RUN mkdir -p /app/tmp /app/data && chown -R appuser:appuser /app
 
 USER appuser
 
@@ -40,10 +41,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
 
 # Run with gunicorn (production-grade WSGI server)
+# 단일 사용자 전제: 세션 상태가 모듈 전역변수라 워커/스레드 1개로 직렬화해야 안전.
+# (멀티유저로 전환 시 세션키 기반 서버사이드 캐시로 재설계 후 워커 수를 늘릴 것)
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
-     "--workers", "2", \
-     "--threads", "4", \
+     "--workers", "1", \
+     "--threads", "1", \
      "--timeout", "120", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \

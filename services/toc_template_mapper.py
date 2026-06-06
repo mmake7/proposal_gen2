@@ -6,6 +6,8 @@ difflib.SequenceMatcher를 사용한 퍼지 매칭으로
 TOC 대분류(L1)와 템플릿 챕터를 자동 연결합니다.
 """
 
+from __future__ import annotations
+
 import difflib
 import logging
 from typing import Any

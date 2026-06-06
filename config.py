@@ -3,6 +3,8 @@ Application Configuration
 환경별 설정을 관리합니다.
 """
 
+from __future__ import annotations
+
 import os
 
 

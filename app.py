@@ -3,6 +3,8 @@ PPROPOSAL – Flask Backend Application
 AI 기반 공공기관 제안서 자동 생성 시스템
 """
 
+from __future__ import annotations
+
 import io
 import logging
 import os
@@ -45,6 +47,8 @@ from services_v2.results.exporters import (
 )
 from services_v2.results.rfp_analysis import RfpAnalysisResult
 
+from config import config
+
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(_APP_DIR, '.env'))
 load_dotenv(os.path.join(_APP_DIR, '.env.local'), override=True)  # .env.local이 우선
@@ -59,7 +63,7 @@ _last_v2_result: RfpAnalysisResult | None = None
 _last_v2_filename: str = ''
 
 # ── App Factory ──────────────────────────────────────────────
-def create_app():
+def create_app(config_name=None):
     app = Flask(
         __name__,
         static_folder='static',
@@ -67,8 +71,11 @@ def create_app():
     )
 
     # ── Configuration ────────────────────────────────────────
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-in-production')
+    # FLASK_ENV로 환경 선택. 미설정 시 'production'(안전 기본값: debug off).
+    # 로컬에서 Werkzeug 디버거/리로더를 쓰려면 FLASK_ENV=development.
+    # SECRET_KEY / MAX_CONTENT_LENGTH는 config.py(Config)에서 일괄 관리.
+    config_name = config_name or os.environ.get('FLASK_ENV', 'production')
+    app.config.from_object(config.get(config_name, config['default']))
 
     # ── CORS ─────────────────────────────────────────────────
     CORS(app, resources={r'/api/*': {'origins': '*'}})
@@ -289,6 +296,9 @@ def register_routes(app):
         # 최근 분석 결과 저장 (Excel 다운로드용)
         _last_analysis = result_dict
         _rfp_full_text = extraction.full_text
+        # v1 분석으로 갱신됐으므로 이전 v2 결과 무효화 (stale v2 export 방지)
+        _last_v2_result = None
+        _last_v2_filename = ''
 
         # AI가 생성한 TOC를 세션 TOC로 자동 설정
         if result_dict.get('toc'):
@@ -742,4 +752,6 @@ app = create_app()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    host = os.environ.get('HOST', '0.0.0.0')
+    # debug는 config(FLASK_ENV)에서 결정 — 운영에서 Werkzeug 디버거(RCE) 노출 방지.
+    app.run(host=host, port=port, debug=app.config.get('DEBUG', False))

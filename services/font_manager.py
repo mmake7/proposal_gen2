@@ -8,6 +8,8 @@ Font Preset Manager
 - 폰트 적용 모드 설정 (template_keep, preset_apply, preset_force)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # 저장 경로 (template_manager.py와 동일 디렉터리 사용)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'templates_storage')
+TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'data', 'templates_storage')
 PRESETS_FILE = os.path.join(TEMPLATES_STORAGE_DIR, 'font_presets.json')
 SETTINGS_FILE = os.path.join(TEMPLATES_STORAGE_DIR, 'font_settings.json')
 

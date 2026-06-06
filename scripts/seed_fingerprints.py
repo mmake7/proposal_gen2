@@ -63,7 +63,7 @@ def result_from_json(data: dict) -> RfpAnalysisResult:
 
 def main(*src_dirs: str) -> int:
     if not src_dirs:
-        src_dirs = ('sample_outputs', 'analyses')
+        src_dirs = ('sample_outputs', 'data/analyses')
 
     added = 0
     for src_dir in src_dirs:

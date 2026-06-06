@@ -18,7 +18,7 @@ from services_v2.results.rfp_analysis import RfpAnalysisResult
 
 logger = logging.getLogger(__name__)
 
-ANALYSES_DIR = Path(__file__).resolve().parent.parent.parent / 'analyses'
+ANALYSES_DIR = Path(__file__).resolve().parent.parent.parent / 'data' / 'analyses'
 
 
 def save_result(

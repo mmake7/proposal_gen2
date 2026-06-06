@@ -10,6 +10,8 @@ PowerPoint Template Manager
 - 템플릿 메타정보 JSON 관리
 """
 
+from __future__ import annotations
+
 import io
 import json
 import logging
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # 저장 경로
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'templates_storage')
+TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'data', 'templates_storage')
 METADATA_FILE = os.path.join(TEMPLATES_STORAGE_DIR, '_metadata.json')
 
 # 장 구분 패턴 (로마숫자/아라비아숫자 + 점/마침표 + 제목)

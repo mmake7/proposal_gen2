@@ -244,8 +244,12 @@ class TestRfpAnalyzerErrors:
         with pytest.raises(RfpAnalysisError, match='빈 응답'):
             analyzer.analyze('테스트')
 
-    def test_missing_api_key_raises(self):
+    def test_missing_api_key_raises(self, monkeypatch):
         """API 키 없이 분석 시 에러 발생"""
+        # .env가 ANTHROPIC_API_KEY를 제공하면 RfpAnalyzer(api_key='')의
+        # 폴백이 실제 키로 채워져 진짜 API를 호출하게 된다. 이 테스트는
+        # '키 없음' 상황을 검증하므로 환경변수를 명시적으로 제거한다.
+        monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
         analyzer = RfpAnalyzer(api_key='')
         with pytest.raises(RfpAnalysisError, match='ANTHROPIC_API_KEY'):
             analyzer.analyze('테스트')

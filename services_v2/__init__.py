@@ -3,6 +3,8 @@
 기존 services/ 패키지와 병행 운영. POST /api/parse?engine=v2 로 활성화.
 """
 
+from __future__ import annotations
+
 # 환경변수: .env → .env.local(우선) 순으로 로드.
 # services_v2를 직접 import하는 스크립트(예: scripts/smoke_v2.py)에서도 유효.
 import os as _os

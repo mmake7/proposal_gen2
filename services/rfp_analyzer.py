@@ -327,7 +327,7 @@ class RfpAnalyzer:
 
         # 디버깅용: 원본 응답을 파일로 저장
         try:
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+            log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'logs')
             os.makedirs(log_dir, exist_ok=True)
             log_path = os.path.join(log_dir, 'last_api_response.txt')
             with open(log_path, 'w', encoding='utf-8') as f:

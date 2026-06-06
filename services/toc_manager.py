@@ -9,6 +9,8 @@ TOC (Table of Contents) Manager
 - 표준 템플릿 적용 (기존 TOC에 병합)
 """
 
+from __future__ import annotations
+
 import copy
 import json
 import logging
@@ -18,7 +20,7 @@ import uuid
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'templates_storage')
+TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'data', 'templates_storage')
 TOC_TEMPLATES_FILE = os.path.join(TEMPLATES_STORAGE_DIR, 'toc_templates.json')
 
 

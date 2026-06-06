@@ -6,6 +6,8 @@ PPTX Filler
 폰트 설정 모드에 따라 폰트를 적용하여 최종 PPTX를 생성합니다.
 """
 
+from __future__ import annotations
+
 import io
 import logging
 import os
@@ -19,7 +21,7 @@ from services.font_manager import get_font_settings, get_preset
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'templates_storage')
+TEMPLATES_STORAGE_DIR = os.path.join(BASE_DIR, 'data', 'templates_storage')
 
 
 class PptxFillerError(Exception):

@@ -73,6 +73,11 @@ templates_storage/
 logs/
 
 # ===========================
+# Runtime data (생성/업로드된 런타임 상태 — analyses/templates_storage/logs)
+# ===========================
+data/
+
+# ===========================
 # Output Files (generated)
 # ===========================
 output/
@@ -95,5 +100,6 @@ sample/
 # Test artifacts
 # ===========================
 test_rfp*.pdf
+test_rfp*.json
 test_template*.pptx
 test_output*.pptx
