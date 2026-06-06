@@ -10,7 +10,7 @@ from services_v2.results.rfp_analysis import TocItem
 class TocAgent(ClaudeAgent):
     name = 'toc'
     prompt_file = 'toc.md'
-    max_tokens = 8192  # 깊은 트리 추출 시 4096 한도 초과 사례 방지
+    max_tokens = 16000  # 깊은 트리 + adaptive thinking 토큰 여유
 
     def extract(self, doc: RfpDocument, toc_location: str = '') -> list[TocItem]:
         # 목차 위치 힌트에 따라 샘플링 영역 결정.

@@ -14,7 +14,7 @@ from services_v2.results.rfp_analysis import RfpClassification
 class ClassifierAgent(ClaudeAgent):
     name = 'classifier'
     prompt_file = 'classifier.md'
-    max_tokens = 1024
+    max_tokens = 4096
 
     def classify(self, doc: RfpDocument) -> RfpClassification:
         # 분류는 문서 전체 컨텍스트가 필요하나, 너무 길면 앞·뒤 일부만.

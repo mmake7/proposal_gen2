@@ -14,7 +14,7 @@ from services_v2.results.rfp_analysis import Requirement, RfpClassification
 class NarrativeRequirementAgent(ClaudeAgent):
     name = 'requirement_narrative'
     prompt_file = 'requirement_narrative.md'
-    max_tokens = 8192
+    max_tokens = 16000
 
     def extract(
         self,

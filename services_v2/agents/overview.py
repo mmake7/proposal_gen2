@@ -10,7 +10,7 @@ from services_v2.results.rfp_analysis import Overview
 class OverviewAgent(ClaudeAgent):
     name = 'overview'
     prompt_file = 'overview.md'
-    max_tokens = 1024
+    max_tokens = 4096
 
     def extract(self, doc: RfpDocument, classification_notes: str = '') -> Overview:
         # 사업개요는 보통 문서 앞 5~10페이지에 집중.

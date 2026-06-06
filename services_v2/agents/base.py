@@ -25,7 +25,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MODEL = 'claude-opus-4-7'
+# 모델 ID는 ANTHROPIC_MODEL 환경변수로 외부화 (기본: 최신 Opus)
+DEFAULT_MODEL = os.environ.get('ANTHROPIC_MODEL', 'claude-opus-4-8')
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / 'prompts'
 
 
@@ -52,7 +53,8 @@ class ClaudeAgent:
     name: str = 'base'
     prompt_file: str = ''      # services_v2/prompts/<name>.md (서브클래스에서 지정)
     model: str = DEFAULT_MODEL
-    max_tokens: int = 4096
+    max_tokens: int = 8192        # adaptive thinking 토큰이 max_tokens를 소비하므로 여유 확보
+    effort: str = 'high'          # output_config.effort — low|medium|high|xhigh|max(Opus)
 
     def __init__(self, *, api_key: str | None = None, model: str | None = None):
         self._api_key = api_key or os.environ.get('ANTHROPIC_API_KEY', '')
@@ -98,6 +100,8 @@ class ClaudeAgent:
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
+                thinking={'type': 'adaptive'},          # Opus 4.7/4.8: adaptive만 허용
+                output_config={'effort': self.effort},  # 추론 깊이/토큰 예산
                 messages=[{'role': 'user', 'content': user}],
             )
         except Exception as exc:

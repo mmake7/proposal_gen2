@@ -57,11 +57,11 @@ class ContentGenerator:
         self,
         *,
         api_key: str | None = None,
-        model: str = 'claude-opus-4-7',
-        max_tokens: int = 4096,
+        model: str | None = None,
+        max_tokens: int = 8192,
     ):
         self._api_key = api_key or os.environ.get('ANTHROPIC_API_KEY', '')
-        self._model = model
+        self._model = model or os.environ.get('ANTHROPIC_MODEL', 'claude-opus-4-8')
         self._max_tokens = max_tokens
         self._client = None
 
@@ -109,6 +109,8 @@ class ContentGenerator:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=_SYSTEM_PROMPT,
+                thinking={'type': 'adaptive'},       # Opus 4.7/4.8: adaptive만 허용
+                output_config={'effort': 'high'},    # 제안서 콘텐츠 품질 우선
                 messages=[
                     {'role': 'user', 'content': user_message},
                 ],

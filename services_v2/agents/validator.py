@@ -50,7 +50,7 @@ def _dedupe_issues(issues: list[dict]) -> list[dict]:
 class ValidatorAgent(ClaudeAgent):
     name = 'validator'
     prompt_file = 'validator.md'
-    max_tokens = 2048
+    max_tokens = 8192
 
     def validate(
         self,

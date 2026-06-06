@@ -35,7 +35,7 @@ SCORE_CELL_PATTERN = re.compile(r'^\s*(\d{1,3})\s*점?\s*$')
 class ScoringAgent(ClaudeAgent):
     name = 'scoring'
     prompt_file = 'scoring.md'
-    max_tokens = 4096
+    max_tokens = 8192
 
     def extract(self, doc: RfpDocument, scoring_format: str = '') -> list[ScoringItem]:
         candidates = find_scoring_table_candidates(doc)
