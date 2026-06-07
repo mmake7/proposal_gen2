@@ -8,14 +8,11 @@ from __future__ import annotations
 import io
 import logging
 import os
-import tempfile
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 
-from services.pdf_extractor import PdfExtractor, PdfExtractionError
-from services.rfp_analyzer import RfpAnalyzer, RfpAnalysisError
 from services.excel_exporter import export_to_excel, generate_filename
 from services.template_manager import (
     save_template, list_templates, get_template_detail, delete_template,
@@ -30,7 +27,6 @@ from services.toc_manager import (
     update_toc_template, delete_toc_template, get_current_toc,
     set_current_toc, apply_toc_template, finalize_toc, TocManagerError,
 )
-from services.rfp_requirement_parser import parse_rfp_requirements
 from services.toc_template_mapper import (
     map_toc_to_template, get_mapping, update_mapping, MapperError,
 )
@@ -38,7 +34,7 @@ from services.content_generator import (
     ContentGenerator, get_generated_content, ContentGeneratorError,
 )
 from services.pptx_filler import fill_template, PptxFillerError
-from services_v2.documents import ingest_bytes as v2_ingest_bytes
+from services_v2.documents import ingest_bytes as v2_ingest_bytes, IngestError
 from services_v2.orchestrator import (
     analyze_rfp_document, OrchestratorError,
 )
@@ -87,86 +83,6 @@ def create_app(config_name=None):
     return app
 
 
-# ── 요구사항 파서-AI 병합 헬퍼 ────────────────────────────────
-def _merge_parser_into_analysis(result_dict: dict, parser_result: dict) -> dict:
-    """파서 결과를 AI 분석 결과에 병합한다.
-
-    전략: 파서 결과(테이블/텍스트 기반)를 우선하고, AI 결과로 빈 필드를 보완.
-    overview, scoring, toc 등 AI 전용 필드는 그대로 유지한다.
-    """
-    parser_reqs = parser_result.get('requirements', [])
-    if not parser_reqs:
-        return result_dict
-
-    # AI 요구사항을 id 기준으로 인덱싱
-    ai_by_id: dict[str, dict] = {}
-    for r in result_dict.get('requirements', []):
-        rid = r.get('id', '')
-        if rid:
-            ai_by_id[rid] = r
-
-    merged = []
-    seen_ids: set[str] = set()
-
-    for pr in parser_reqs:
-        req_id = pr.get('req_id', '')
-        if not req_id or req_id in seen_ids:
-            continue
-        seen_ids.add(req_id)
-
-        # 파서 definition + detail → desc
-        definition = (pr.get('definition') or '').strip()
-        detail = (pr.get('detail') or '').strip()
-        if definition and detail:
-            desc = f"{definition}\n{detail}"
-        else:
-            desc = definition or detail
-
-        item = {
-            'id': req_id,
-            'name': (pr.get('name') or '').strip(),
-            'category': (pr.get('category') or '').strip(),
-            'desc': desc,
-            'level': '',
-            # 파서 전용 필드 보존
-            'category_code': pr.get('category_code', ''),
-            'definition': definition,
-            'detail': detail,
-            'output_info': (pr.get('output_info') or '').strip(),
-            'related_reqs': (pr.get('related_reqs') or '').strip(),
-            'source': (pr.get('source') or '').strip(),
-            'parse_method': pr.get('parse_method', ''),
-        }
-
-        # AI 결과로 빈 필드 보완
-        ai_item = ai_by_id.get(req_id, {})
-        if not item['name'] and ai_item.get('name'):
-            item['name'] = ai_item['name']
-        if not item['category'] and ai_item.get('category'):
-            item['category'] = ai_item['category']
-        if not item['desc'] and ai_item.get('desc'):
-            item['desc'] = ai_item['desc']
-        if not item['level'] and ai_item.get('level'):
-            item['level'] = ai_item['level']
-
-        merged.append(item)
-
-    # AI에만 있는 요구사항 추가 (파서가 놓친 것)
-    for r in result_dict.get('requirements', []):
-        rid = r.get('id', '')
-        if rid and rid not in seen_ids:
-            merged.append(r)
-            seen_ids.add(rid)
-
-    result_dict['requirements'] = merged
-
-    # 파서 통계/요약 추가 (프론트엔드에서 참조 가능)
-    result_dict['parser_stats'] = parser_result.get('stats', {})
-    result_dict['parser_summary'] = parser_result.get('summary', [])
-
-    return result_dict
-
-
 # ── Routes ───────────────────────────────────────────────────
 def _register_core_parse(app):
     @app.route('/')
@@ -176,23 +92,15 @@ def _register_core_parse(app):
 
     @app.route('/api/parse', methods=['POST'])
     def api_parse():
-        """RFP 문서(PDF/HWPX/DOCX) 업로드 및 분석.
-
-        - ?engine=v2 (기본): services_v2 멀티에이전트 파이프라인.
-        - ?engine=v1: 레거시 단일 LLM 경로(PDF 전용, 폴백용).
-        - HWPX/DOCX는 v1 미지원이라 항상 v2로 처리된다.
-        """
+        """RFP 문서(PDF/HWPX/DOCX) 업로드 및 분석 (v2 멀티에이전트 정본)."""
         global _last_analysis, _rfp_full_text, _last_v2_result, _last_v2_filename
 
         # ── 파일 유효성 검사 ──────────────────────────────────
         if 'file' not in request.files:
             return jsonify({'error': '파일이 전송되지 않았습니다.'}), 400
-
         file = request.files['file']
-
         if file.filename == '':
             return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
-
         ext = file.filename.lower().rsplit('.', 1)[-1]
         if ext not in ('pdf', 'hwpx', 'docx'):
             return jsonify({
@@ -202,108 +110,23 @@ def _register_core_parse(app):
 
         file_bytes = file.read()
 
-        # ── 엔진 분기 — 기본값 v2(정본). v1은 명시 요청 시 폴백 ──
-        # HWPX/DOCX는 v1이 지원하지 않으므로 항상 v2 사용
-        engine = request.args.get('engine', 'v2').lower()
-        if ext in ('hwpx', 'docx'):
-            engine = 'v2'
-
-        if engine == 'v2':
-            try:
-                doc = v2_ingest_bytes(file_bytes, filename=file.filename)
-                result_obj = analyze_rfp_document(doc)
-            except OrchestratorError as exc:
-                logger.warning('v2 파이프라인 실패: %s', exc)
-                return jsonify({'error': f'v2 분석 실패: {exc}'}), 422
-
-            result_dict = result_obj.to_dict()
-            _last_analysis = result_dict
-            _last_v2_result = result_obj
-            _last_v2_filename = file.filename
-            _rfp_full_text = doc.full_text  # v2도 full_text 보존 (content_generator용)
-
-            if result_dict.get('toc'):
-                set_current_toc(result_dict['toc'])
-
-            return jsonify(result_dict)
-
-        # ── v1 (기본): PDF 텍스트 추출 ───────────────────────
+        # ── v2 멀티에이전트 분석 ──────────────────────────────
         try:
-            extractor = PdfExtractor(enable_ocr=True)
-            extraction = extractor.extract_from_bytes(
-                file_bytes, filename=file.filename,
-            )
-        except PdfExtractionError as exc:
-            logger.warning('PDF 추출 실패: %s', exc)
-            return jsonify({
-                'error': f'PDF 파일을 처리할 수 없습니다: {exc}'
-            }), 422
+            doc = v2_ingest_bytes(file_bytes, filename=file.filename)
+            result_obj = analyze_rfp_document(doc)
+        except (OrchestratorError, IngestError) as exc:
+            logger.warning('RFP 분석 실패: %s', exc)
+            return jsonify({'error': f'분석 실패: {exc}'}), 422
 
-        if not extraction.full_text.strip():
-            return jsonify({
-                'error': 'PDF에서 텍스트를 추출할 수 없습니다. '
-                         '스캔 기반 PDF이거나 이미지만 포함된 문서일 수 있습니다.'
-            }), 422
-
-        # ── AI 분석 ──────────────────────────────────────────
-        ai_failed = False
-        try:
-            analyzer = RfpAnalyzer()
-            analysis = analyzer.analyze(extraction.full_text)
-            result_dict = analysis.to_dict()
-        except RfpAnalysisError as exc:
-            logger.warning('AI 분석 실패 (파서 폴백 시도): %s', exc)
-            ai_failed = True
-            # 파서로 폴백하기 위해 빈 구조 생성
-            result_dict = {
-                'overview': None,
-                'requirements': [],
-                'scoring': [],
-                'toc': [],
-            }
-
-        # ── 요구사항 파서 병합 (파서 우선, AI 보완) ─────────
-        try:
-            # file_bytes를 임시 파일로 저장하여 pdfplumber에 전달
-            with tempfile.NamedTemporaryFile(
-                suffix='.pdf', delete=False,
-            ) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-
-            try:
-                parser_result = parse_rfp_requirements(tmp_path)
-                result_dict = _merge_parser_into_analysis(
-                    result_dict, parser_result,
-                )
-                logger.info(
-                    '요구사항 파서 병합 완료: %d건 (completeness %.1f%%)',
-                    len(result_dict.get('requirements', [])),
-                    parser_result.get('stats', {}).get('completeness_pct', 0),
-                )
-            finally:
-                os.unlink(tmp_path)
-        except Exception as exc:
-            logger.warning('요구사항 파서 실행/병합 실패: %s', exc)
-            # AI도 실패하고 파서도 실패하면 에러 반환
-            if ai_failed:
-                return jsonify({
-                    'error': 'AI 분석과 요구사항 파서 모두 실패했습니다.'
-                }), 422
-
-        # 최근 분석 결과 저장 (Excel 다운로드용)
+        result_dict = result_obj.to_dict()
         _last_analysis = result_dict
-        _rfp_full_text = extraction.full_text
-        # v1 분석으로 갱신됐으므로 이전 v2 결과 무효화 (stale v2 export 방지)
-        _last_v2_result = None
-        _last_v2_filename = ''
+        _last_v2_result = result_obj
+        _last_v2_filename = file.filename
+        _rfp_full_text = doc.full_text  # content_generator용
 
-        # AI가 생성한 TOC를 세션 TOC로 자동 설정
         if result_dict.get('toc'):
             set_current_toc(result_dict['toc'])
-
         return jsonify(result_dict)
-
 
 
 def _register_templates(app):
@@ -697,7 +520,7 @@ def _register_exports(app):
         """마지막 v2 분석 결과 → Excel 다운로드 (7시트)."""
         if _last_v2_result is None:
             return jsonify({
-                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+                'error': 'v2 분석 결과 없음. /api/parse 먼저 호출하세요.'
             }), 404
         try:
             buf = v2_to_excel(_last_v2_result)
@@ -716,7 +539,7 @@ def _register_exports(app):
         """마지막 v2 분석 결과 → 마크다운 보고서 다운로드."""
         if _last_v2_result is None:
             return jsonify({
-                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+                'error': 'v2 분석 결과 없음. /api/parse 먼저 호출하세요.'
             }), 404
         md = v2_to_markdown(_last_v2_result, filename=_last_v2_filename)
         return send_file(
@@ -731,7 +554,7 @@ def _register_exports(app):
         """마지막 v2 분석 결과 → 전체 JSON 다운로드."""
         if _last_v2_result is None:
             return jsonify({
-                'error': 'v2 분석 결과 없음. /api/parse?engine=v2 먼저 호출하세요.'
+                'error': 'v2 분석 결과 없음. /api/parse 먼저 호출하세요.'
             }), 404
         import json as _json
         body = _json.dumps(_last_v2_result.to_dict(), ensure_ascii=False, indent=2)
