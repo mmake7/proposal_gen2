@@ -41,7 +41,11 @@ class ScoringAgent(ClaudeAgent):
         candidates = find_scoring_table_candidates(doc)
         if candidates:
             text = _candidates_to_text(candidates, max_chars=40_000)
-            text_source = f'평가표 후보 {len(candidates)}개'
+            # 가격(입찰가격)평가는 별도 표/수식이라 후보 표에 없을 수 있다.
+            # 본문 뒷부분을 추가 문맥으로 동봉해 기술+가격 합산(=100)이 가능하게 한다.
+            tail = self._tail_sample(doc, max_chars=8_000)
+            text += '\n\n--- 추가 문맥 (가격/입찰가격 평가 등 본문 뒷부분) ---\n' + tail
+            text_source = f'평가표 후보 {len(candidates)}개 + 본문 뒷부분 문맥'
             logger.info('scoring: 결정적 평가표 후보 %d개 발견', len(candidates))
         else:
             text = self._tail_sample(doc, max_chars=40_000)
