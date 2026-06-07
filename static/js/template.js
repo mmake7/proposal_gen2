@@ -47,26 +47,8 @@
       String(d.getMinutes()).padStart(2, '0');
   }
 
-  function esc(s) {
-    if (!s) return '';
-    var el = document.createElement('span');
-    el.textContent = s;
-    return el.innerHTML;
-  }
+  /* escapeHtml·esc·toast → util.js 전역 사용 */
 
-  function toast(msg, type) {
-    var c = document.getElementById('toast-container');
-    if (!c) return;
-    var t = document.createElement('div');
-    t.className = 'toast toast--' + (type || 'info');
-    t.textContent = msg;
-    c.appendChild(t);
-    setTimeout(function () { t.classList.add('is-visible'); }, 10);
-    setTimeout(function () {
-      t.classList.remove('is-visible');
-      setTimeout(function () { t.remove(); }, 300);
-    }, 3000);
-  }
 
   /* ============================================================
      File Selection & Drag-Drop

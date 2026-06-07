@@ -434,12 +434,7 @@
   /* ============================================================
      HTML 이스케이프
      ============================================================ */
-  function escapeHtml(str) {
-    if (!str) return '';
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
+  /* escapeHtml·esc·toast → util.js 전역 사용 */
 
   /* ============================================================
      전역 API 노출

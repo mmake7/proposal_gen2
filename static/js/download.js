@@ -104,11 +104,7 @@
     }, 250);
   }
 
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
+  /* escapeHtml·esc·toast → util.js 전역 사용 */
 
   /* 전역 API로 노출 */
   window.showToast = showToast;

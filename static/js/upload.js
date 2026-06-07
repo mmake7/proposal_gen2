@@ -499,14 +499,7 @@
     card.hidden = false;
   }
 
-  function escapeHtml(s) {
-    if (s == null) return '';
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
+  /* escapeHtml·esc·toast → util.js 전역 사용 */
 
   /* ── 데모 모드: URL ?demo=estimation 이면 KIAT mock 견적 자동 렌더 ── */
   function checkDemoMode() {
@@ -822,11 +815,6 @@
       '</div>';
   }
 
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
 
   /* ============================================================
      요구사항 탭 콘텐츠 렌더링
