@@ -15,6 +15,7 @@ import os
 from pptx import Presentation
 from pptx.util import Pt, Emu
 from pptx.dml.color import RGBColor
+from pptx.enum.shapes import PP_PLACEHOLDER
 
 from services.font_manager import get_font_settings, get_preset
 
@@ -118,6 +119,15 @@ def _fill_chapter_slides(
     """챕터 슬라이드에 콘텐츠를 채웁니다."""
     slides = list(prs.slides)
 
+    # 콘텐츠 슬롯(첫 슬라이드는 제목용)보다 섹션이 많으면 조용히 누락되므로 경고.
+    content_slots = max(len(slide_numbers) - 1, 0)
+    if len(section_contents) > content_slots:
+        logger.warning(
+            '챕터 "%s": 섹션 %d개 > 콘텐츠 슬라이드 %d개 — 뒤쪽 %d개 섹션이 누락됩니다.',
+            chapter_title, len(section_contents), content_slots,
+            len(section_contents) - content_slots,
+        )
+
     for i, slide_num in enumerate(slide_numbers):
         slide_idx = slide_num - 1  # 0-indexed
         if slide_idx < 0 or slide_idx >= len(slides):
@@ -205,26 +215,32 @@ def _fill_content_slide(
 
 
 def _is_title_placeholder(shape) -> bool:
-    """shape가 제목 placeholder인지 확인합니다."""
+    """shape가 제목 placeholder인지 확인합니다 (idx가 아닌 placeholder 타입 기준).
+
+    idx 1은 레이아웃에 따라 부제(SUBTITLE)이거나 본문(BODY)이라, idx로 판별하면
+    부제를 제목으로 오인한다. 타입으로 판별해 제목/본문을 명확히 분리한다.
+    """
     try:
         ph = shape.placeholder_format
-        if ph is not None:
-            return ph.idx in (0, 1)  # Title or Center Title
+        if ph is not None and ph.type is not None:
+            return ph.type in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
     except Exception:
         pass
     return False
 
 
 def _is_body_placeholder(shape) -> bool:
-    """shape가 본문 placeholder인지 확인합니다."""
+    """shape가 본문 placeholder인지 확인합니다 (제목 타입과 상호배타적)."""
     try:
         ph = shape.placeholder_format
-        if ph is not None:
-            return ph.idx in (1, 2, 13, 14)  # Body, Subtitle, etc.
+        if ph is not None and ph.type is not None:
+            return ph.type in (
+                PP_PLACEHOLDER.BODY, PP_PLACEHOLDER.OBJECT, PP_PLACEHOLDER.SUBTITLE,
+            )
     except Exception:
         pass
-    # 큰 텍스트 프레임을 본문으로 간주
-    if shape.has_text_frame:
+    # placeholder 타입이 없으면 큰 텍스트 프레임을 본문으로 간주 (제목은 제외)
+    if shape.has_text_frame and not _is_title_placeholder(shape):
         try:
             width = shape.width
             if width and int(width) > 3000000:  # > ~2.3 inches

@@ -86,3 +86,35 @@ def test_fill_template_skips_unmatched_mapping(tmp_path, monkeypatch):
     mapping = [{'status': 'unmatched', 'toc_index': 0, 'toc_title': 'x', 'slides': [1]}]
     buf = filler.fill_template('smoke', mapping, {'sections': {}}, [])
     assert buf.read()[:2] == b'PK'
+
+
+def test_placeholder_classification_disjoint_and_correct():
+    """제목/본문 placeholder가 타입 기준으로 상호배타 분류되고 텍스트가 올바른 자리에 들어간다.
+
+    (과거 idx 기반: idx 1을 제목·본문 양쪽으로 보아 부제를 제목으로 오인하는 버그)
+    """
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])  # Title and Content
+
+    filler._fill_content_slide(
+        slide,
+        {'title': '섹션제목', 'content_text': '본문문장', 'bullet_points': ['불릿A']},
+        'template_keep', None,
+    )
+
+    title_ph = body_ph = None
+    for sh in slide.shapes:
+        if not sh.is_placeholder:
+            continue
+        is_t = filler._is_title_placeholder(sh)
+        is_b = filler._is_body_placeholder(sh)
+        assert not (is_t and is_b), '제목/본문 분류가 겹침'
+        if is_t:
+            title_ph = sh
+        elif is_b:
+            body_ph = sh
+
+    assert title_ph is not None and '섹션제목' in title_ph.text_frame.text
+    assert body_ph is not None
+    assert '본문문장' in body_ph.text_frame.text
+    assert '불릿A' in body_ph.text_frame.text
