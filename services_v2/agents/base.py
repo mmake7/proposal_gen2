@@ -96,14 +96,18 @@ class ClaudeAgent:
         client = self._get_client()
         start = time.time()
         try:
-            response = client.messages.create(
+            # streaming 사용: 큰 출력(깊은 TOC/대량 요구사항)+adaptive thinking 토큰이
+            # max_tokens를 크게 쓰므로, 비스트리밍의 HTTP 타임아웃/ValueError를 피한다.
+            # get_final_message()는 누적된 완성 Message(.content/.stop_reason)를 반환.
+            with client.messages.stream(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
                 thinking={'type': 'adaptive'},          # Opus 4.7/4.8: adaptive만 허용
                 output_config={'effort': self.effort},  # 추론 깊이/토큰 예산
                 messages=[{'role': 'user', 'content': user}],
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except Exception as exc:
             self._record_call(start, len(user), 0, success=False, error=str(exc))
             raise AgentError(f'{self.name} API 호출 실패: {exc}') from exc
