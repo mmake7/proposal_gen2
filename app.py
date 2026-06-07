@@ -168,7 +168,7 @@ def _merge_parser_into_analysis(result_dict: dict, parser_result: dict) -> dict:
 
 
 # ── Routes ───────────────────────────────────────────────────
-def register_routes(app):
+def _register_core_parse(app):
     @app.route('/')
     def index():
         """메인 페이지 렌더링"""
@@ -304,6 +304,9 @@ def register_routes(app):
 
         return jsonify(result_dict)
 
+
+
+def _register_templates(app):
     # ── 템플릿 관리 API ────────────────────────────────────
     @app.route('/api/templates/upload', methods=['POST'])
     def api_templates_upload():
@@ -367,6 +370,9 @@ def register_routes(app):
             return jsonify({'error': '템플릿을 찾을 수 없습니다.'}), 404
         return jsonify({'message': '템플릿이 삭제되었습니다.'}), 200
 
+
+
+def _register_fonts(app):
     # ── 폰트 프리셋 API ────────────────────────────────────
     @app.route('/api/fonts/presets', methods=['GET'])
     def api_fonts_presets_list():
@@ -429,6 +435,9 @@ def register_routes(app):
             return jsonify({'error': str(exc)}), 422
         return jsonify(settings)
 
+
+
+def _register_toc(app):
     # ── TOC 관리 API ──────────────────────────────────────
     @app.route('/api/toc/templates', methods=['GET'])
     def api_toc_templates_list():
@@ -514,6 +523,9 @@ def register_routes(app):
             return jsonify({'error': str(exc)}), 422
         return jsonify(result)
 
+
+
+def _register_proposal(app):
     # ── 제안서 생성 파이프라인 API ─────────────────────────
     @app.route('/api/proposal/map', methods=['POST'])
     def api_proposal_map():
@@ -632,6 +644,9 @@ def register_routes(app):
             download_name=filename,
         )
 
+
+
+def _register_exports(app):
     @app.route('/api/download/excel', methods=['GET'])
     def api_download_excel():
         """분석 결과 Excel 다운로드
@@ -729,6 +744,18 @@ def register_routes(app):
 
 
 # ── Error Handlers ───────────────────────────────────────────
+
+
+def register_routes(app):
+    """도메인별 라우트 등록 진입점 (구 단일 거대 함수를 분해)."""
+    _register_core_parse(app)
+    _register_templates(app)
+    _register_fonts(app)
+    _register_toc(app)
+    _register_proposal(app)
+    _register_exports(app)
+
+
 def register_error_handlers(app):
     @app.errorhandler(404)
     def not_found(e):
